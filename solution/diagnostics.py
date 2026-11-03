@@ -118,23 +118,6 @@ def paired_spell_difference(labels_a, labels_b, n_draws=BOOTSTRAP_N, seed=0):
     return score(1, everyone) - score(0, everyone), low, high, float(np.mean(np.array(draws) > 0))
 
 
-def segment_table(labels):
-    """One line per public ground-truth segment: our segments over it, and the best IoU."""
-    gt = pm.read_label_csv(PUBLIC_GT)["label"].values
-    graded = np.flatnonzero(gt != "X")
-    first, stop = int(graded[0]), int(graded[-1]) + 1
-    ours = label_runs(labels, first, stop)
-    lines = []
-    for a, b, label in label_runs(gt, first, stop):
-        over = [(c, d, x) for c, d, x in ours if d > a and c < b]
-        iou = max([(min(b, d) - max(a, c)) / float(max(b, d) - min(a, c))
-                   for c, d, x in over if x == label] or [0.0])
-        lines.append("  {} {:>6}-{:<6} {:5.1f}s  IoU {:.2f}  <- {}".format(
-            label, a, b, (b - a) / 25.0, iou,
-            ", ".join("{} {}-{}".format(x, c, d) for c, d, x in over)))
-    return "\n".join(lines)
-
-
 def full_match_checks(match, labels, stoppages, events):
     """The whole-match checks described in the module docstring."""
     spells = [b - a for _, first, last in match.halves
@@ -209,7 +192,6 @@ if __name__ == '__main__':
         boot["macro_f1"]))
     print("  per IoU: " + "  ".join("{}: {:.3f}".format(k, v["f1"])
                                     for k, v in sorted(boot["spell_f1"].items())))
-    print("\nground-truth segments and ours over them\n" + segment_table(labels))
     print("\nfull match")
     for key, value in full.items():
         print("  {:<14} {}".format(key, round(value, 4)))

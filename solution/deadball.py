@@ -40,7 +40,6 @@ FEW_PLAYERS = 18              # fewer tracked players than this: players bunched
 FEW_PLAYERS_WEIGHT = 1.0
 # 2. smooth
 SWITCH_COST = 40.0            # evidence a stoppage needs to open, and again to close
-KICKOFF_GUARD = 50            # frames after a kickoff that stay live whatever the score says
 # 3. latch: where a restart may be taken, widened by SPOT_MARGIN because a restart is detected a
 # few frames after the kick, a few metres down the ball's path
 OUT_MIN_FRAMES = 3            # frames beyond a line before it counts as a crossing
@@ -155,9 +154,7 @@ def legal_restart(match, frame, goal_line):
 
 def smooth(score):
     """Step 2: dead-ball mask for one half, from its score starting at the kickoff."""
-    guard = np.zeros(len(score))
-    guard[:KICKOFF_GUARD] = 1e6  # nobody stops play at the kickoff
-    return two_state(np.maximum(score, 0.0), np.maximum(-score, 0.0) + guard,
+    return two_state(np.maximum(score, 0.0), np.maximum(-score, 0.0),
                      SWITCH_COST, SWITCH_COST, start_cost=(0.0, 1e6)).astype(bool)
 
 

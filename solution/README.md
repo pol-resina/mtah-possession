@@ -69,8 +69,9 @@ The broadcast camera follows the ball up close and sees duels the wide tactical 
 
 1. **Align**: a live broadcast runs in real time, so one offset per half maps it onto the tactical
    frames (found from the ball tracks: 4,014 and 26,920 frames).
-2. **Gate**: use a broadcast frame only when its players stand where the tactical players are --
-   that rules out replays and close-ups.
+2. **Game shot only**: use a broadcast frame only when its homography is valid -- replays and
+   close-ups have none. If even the best offset leaves the two balls over 2 m apart, the half is
+   left out.
 3. **Contact**: read exactly as above, and count it (at 0.72 of a tactical frame) only where the
    tactical camera sees no clear contact.
 
@@ -107,3 +108,10 @@ Lower switch costs, weighting contact by ball control, evidence from duels, igno
 before a foul, a self-supervised team-shape classifier: none helped. With perfect dead-ball
 stretches and restart teams put in by hand, public spellF1 does not move at all -- what remains is
 short possessions inside open play that the tracking barely shows.
+
+Later, eight more experiments, judged on the whole match and on video: a stoppage needs a dead
+ball; stoppages widened over frames where neither camera has the ball; broadcast cut-aways as
+dead-ball evidence; contact from the ball seen in the video (a blob detector, then a CNN refereeing
+the two trackers); Smart Tagging's team on set pieces; each player's team from shirt colour. Only
+cut-aways and shirt colour held up on the full match, each moving its checks by under 1%, and
+neither changes a frame of the public window, so both were left out.
