@@ -62,3 +62,6 @@ __pycache__/
 venv/
 env/
 .DS_Store
+
+# MLflow store of the pre-push registry (mlops/README.md)
+.mlflow/
