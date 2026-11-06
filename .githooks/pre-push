@@ -1,24 +1,45 @@
 #!/bin/sh
-# Register every commit pushed to main as a new MLflow model version (see mlops/README.md).
+# Register pushed commits as MLflow model versions (see mlops/README.md): every push to main, and a
+# push to any other branch only if it beats the remote's main on the public window.
 # The code comes from a clean export of the pushed commit, not from the working tree.
 # Never blocks the push: if registration fails, it says so and the push goes on.
 
+remote=$1
 root=$(git rev-parse --show-toplevel)
 python=${MTAH_PYTHON:-$HOME/.venvs/mtah-possession/bin/python}
 [ -x "$python" ] || python=python3
 zero=0000000000000000000000000000000000000000
 
+export_tree() {  # a temporary folder holding the files of commit $1
+    dir=$(mktemp -d)
+    git archive "$1" | tar -x -C "$dir"
+    echo "$dir"
+}
+
 while read -r local_ref local_sha remote_ref remote_sha; do
-    [ "$remote_ref" = "refs/heads/main" ] || continue
-    [ "$local_sha" = "$zero" ] && continue  # deleting main
-    tree=$(mktemp -d)
-    git archive "$local_sha" | tar -x -C "$tree"
+    case $remote_ref in refs/heads/*) ;; *) continue ;; esac  # branches, not tags
+    [ "$local_sha" = "$zero" ] && continue                     # deleting a branch
+    branch=${remote_ref#refs/heads/}
+    tree=$(export_tree "$local_sha")
+    base_tree=""
+    set -- --commit "$local_sha" --branch "$branch" --store "$root/.mlflow" \
+        --message "$(git log -1 --format=%B "$local_sha")"
+    if [ "$branch" != main ]; then
+        if git fetch -q "$remote" main < /dev/null; then
+            base_sha=$(git rev-parse FETCH_HEAD)
+            base_tree=$(export_tree "$base_sha")
+            set -- "$@" --baseline-commit "$base_sha" --baseline-tree "$base_tree"
+        else
+            echo "pre-push: can't fetch $remote's main to compare with; $branch not registered" >&2
+            rm -rf "$tree"
+            continue
+        fi
+    fi
     if [ -f "$tree/mlops/register.py" ]; then
         MTAH_DATA_DIR=${MTAH_DATA_DIR:-$root/data} MLFLOW_DISABLE_AGENT_HINT=1 \
-            "$python" "$tree/mlops/register.py" --commit "$local_sha" --store "$root/.mlflow" \
-            --message "$(git log -1 --format=%s "$local_sha")" < /dev/null \
-            || echo "pre-push: MLflow registration failed for $local_sha; pushing anyway" >&2
+            "$python" "$tree/mlops/register.py" "$@" < /dev/null \
+            || echo "pre-push: MLflow registration failed for $branch ($local_sha); pushing anyway" >&2
     fi
-    rm -rf "$tree"
+    rm -rf "$tree" $base_tree
 done
 exit 0

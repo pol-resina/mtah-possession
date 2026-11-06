@@ -1,25 +1,31 @@
-"""Log the possession pipeline of one commit to MLflow and register it as a new model version.
+"""Register the possession pipeline of one commit as a new MLflow model version.
 
-    python mlops/register.py --commit <sha> [--message "<subject>"] [--store <dir>]
+    python mlops/register.py --commit <sha> [--branch main] [--message "<commit message>"]
+                             [--baseline-commit <sha> --baseline-tree <dir>] [--store <dir>]
 
-.githooks/pre-push calls this for every commit pushed to main, from a clean export of that commit,
-so what gets registered is exactly what was pushed. One MLflow run per commit:
+.githooks/pre-push calls this for every branch pushed, from a clean export of the pushed commit:
 
-  params     every constant of the pipeline modules (tracking, deadball, possession, broadcast, run)
-  metrics    public_*: the public window, spellF1 with its bootstrap band, and macroF1
-             full_*:   the whole match, no ground truth (solution/diagnostics.py full_match_checks)
-  artifacts  the submission CSV (its sha256 is the tag submission_sha256) and solution/README.md
-  model      mlops/model.py with solution/, starter/ and games.py, registered as `possession`;
-             the alias `main` points at the newest version pushed to main
+  main      always registered; the alias `main` moves to the new version
+  a branch  registered only if it beats main (--baseline-*: the remote's main, exported) on the
+            public window: neither spellF1 nor macroF1 lower, and at least one higher
+
+A version holds:
+  metrics      public_spell_f1, public_macro_f1: the public window, as the scorer computes them
+  description  the commit message, and the scores next to main's
+  params       every constant of the pipeline modules (tracking, deadball, possession, broadcast, run)
+  tags         git_commit, branch, submission_sha256 (same hash = same submission file)
+  artifacts    the submission CSV, solution/README.md, and the model: mlops/model.py with
+               solution/, starter/ and games.py
 
 The store (sqlite + artifacts) defaults to .mlflow/ in the repository, git-ignored. A commit that
-already has a run is skipped, so pushing it again registers nothing.
+already has a run is skipped.
 """
 
 import argparse
 import hashlib
 import os
 import pathlib
+import subprocess
 import sys
 import tempfile
 import warnings
@@ -33,14 +39,20 @@ from mlflow.types import ColSpec, Schema
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 sys.path.insert(0, ROOT)
+import games  # noqa: E402
 from solution import broadcast, deadball, diagnostics, possession, run, tracking  # noqa: E402
-import load_smart_tagging  # noqa: E402  (starter/, put on sys.path by solution.tracking)
-from baseline import write_submission  # noqa: E402
+from baseline import write_submission  # noqa: E402  (starter/, put on sys.path by solution.tracking)
 
 # Params
 MODEL_NAME = "possession"
 EXPERIMENT = "possession"
 ALIAS = "main"
+METRICS = ("public_spell_f1", "public_macro_f1")
+MODEL_DESCRIPTION = (
+    "Ball possession for every video frame of the match: H (home), A (away) or D (dead ball), "
+    "from both cameras' tracking data, with no video and no ground truth as input. The method is "
+    "in solution/README.md. @main is the newest version pushed to main; any other version is a "
+    "branch that beat main on the public window when it was pushed.")
 MODULES = (tracking, deadball, possession, broadcast, run)
 CODE_PATHS = [os.path.join(ROOT, p) for p in ("solution", "starter", "games.py")]
 SIGNATURE = ModelSignature(
@@ -57,6 +69,39 @@ def pipeline_params():
             if name.isupper() and not (isinstance(value, str) and os.sep in value):
                 params["{}.{}".format(module.__name__.split(".")[-1], name)] = value
     return params
+
+
+def public_scores(labels):
+    """spellF1 and macroF1 on the public window (labels: an array, or a submission DataFrame)."""
+    scores = diagnostics.public_scores(labels)
+    return {"public_spell_f1": scores["spell_f1_mean"], "public_macro_f1": scores["macro_f1"]}
+
+
+def baseline_scores(exp_id, commit, tree):
+    """main's scores: from its run in the store if it has one, else by running main's own code."""
+    found = mlflow.search_runs([exp_id], "tags.git_commit = '{}'".format(commit))
+    if len(found):
+        return {key: float(found.iloc[0]["metrics." + key]) for key in METRICS}
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run([sys.executable, os.path.join(tree, "solution", "run.py"),
+                        "--out", tmp, "--name", "main"], check=True, stdout=subprocess.DEVNULL,
+                       env=dict(os.environ, MTAH_DATA_DIR=games.DATA_DIR))
+        return public_scores(diagnostics.pm.read_label_csv(os.path.join(tmp, "main.csv")))
+
+
+def beats(scores, base):
+    """Neither metric lower, at least one higher."""
+    return (all(scores[k] >= base[k] for k in METRICS)
+            and any(scores[k] > base[k] for k in METRICS))
+
+
+def describe(scores, base, args):
+    line = "public spellF1 {:.3f}, macroF1 {:.3f}".format(*(scores[k] for k in METRICS))
+    if base is not None:
+        line += " (main {}: {:.3f}, {:.3f})".format(args.baseline_commit[:7],
+                                                    *(base[k] for k in METRICS))
+    return "{}\n\n{}\nbranch {}, commit {}".format(args.message.strip(), line, args.branch,
+                                                  args.commit[:7]).strip()
 
 
 def sha256(path):
@@ -76,10 +121,15 @@ def experiment_id(store):
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--commit", required=True, help="git commit the code was exported from")
-    parser.add_argument("--message", default="", help="its subject line, used as the run name")
+    parser.add_argument("--branch", default="main", help="branch it was pushed to")
+    parser.add_argument("--message", default="", help="its commit message")
+    parser.add_argument("--baseline-commit", help="main's commit, to beat (branches only)")
+    parser.add_argument("--baseline-tree", help="an export of that commit")
     parser.add_argument("--store", default=os.path.join(ROOT, ".mlflow"),
                         help="folder holding mlflow.db and the artifacts")
     args = parser.parse_args()
+    if args.branch != ALIAS and not (args.baseline_commit and args.baseline_tree):
+        parser.error("a branch other than main needs --baseline-commit and --baseline-tree")
 
     os.makedirs(args.store, exist_ok=True)
     mlflow.set_tracking_uri("sqlite:///" + os.path.join(os.path.abspath(args.store), "mlflow.db"))
@@ -89,25 +139,25 @@ def main():
         return
 
     match = tracking.load()
-    events = load_smart_tagging.load()
-    labels, _, stoppages = run.build(match, broadcast.contact_evidence(match))
-    public = diagnostics.public_scores(labels, diagnostics.BOOTSTRAP_N)
-    full = diagnostics.full_match_checks(match, labels, stoppages, events)
+    labels, _, _ = run.build(match, broadcast.contact_evidence(match))
+    scores = public_scores(labels)
+    base = None
+    if args.branch != ALIAS:
+        base = baseline_scores(exp_id, args.baseline_commit, args.baseline_tree)
+        if not beats(scores, base):
+            print("mlflow: {} not registered, does not beat main: {}".format(
+                args.branch, describe(scores, base, args).splitlines()[-2]))
+            return
+    description = describe(scores, base, args)
 
-    run_name = "{} {}".format(args.commit[:7], args.message).strip()
+    run_name = "{} {}".format(args.commit[:7], args.message.strip().split("\n")[0]).strip()
     with tempfile.TemporaryDirectory() as tmp, \
-            mlflow.start_run(experiment_id=exp_id, run_name=run_name):
+            mlflow.start_run(experiment_id=exp_id, run_name=run_name, description=description):
         csv = write_submission(os.path.join(tmp, "solution.csv"), labels)
-        mlflow.set_tags({"git_commit": args.commit, "git_message": args.message,
+        mlflow.set_tags({"git_commit": args.commit, "branch": args.branch,
                          "submission_sha256": sha256(csv)})
         mlflow.log_params(pipeline_params())
-        mlflow.log_metrics({
-            "public_spell_f1": public["spell_f1_mean"],
-            "public_spell_f1_low": public["spell_bootstrap_low"],
-            "public_spell_f1_high": public["spell_bootstrap_high"],
-            "public_macro_f1": public["macro_f1"],
-            **{"full_" + key: value for key, value in full.items()},
-        })
+        mlflow.log_metrics(scores)
         mlflow.log_artifact(csv, "submission")
         mlflow.log_artifact(os.path.join(ROOT, "solution", "README.md"), "docs")
         with warnings.catch_warnings():
@@ -121,10 +171,15 @@ def main():
 
     version = info.registered_model_version
     client = mlflow.MlflowClient()
+    client.update_registered_model(MODEL_NAME, description=MODEL_DESCRIPTION)
+    client.update_model_version(MODEL_NAME, version, description=description)
     client.set_model_version_tag(MODEL_NAME, version, "git_commit", args.commit)
-    client.set_registered_model_alias(MODEL_NAME, ALIAS, version)
-    print("mlflow: {} -> {} version {} (@{})  public spellF1 {:.3f}  macroF1 {:.3f}".format(
-        args.commit[:7], MODEL_NAME, version, ALIAS, public["spell_f1_mean"], public["macro_f1"]))
+    client.set_model_version_tag(MODEL_NAME, version, "branch", args.branch)
+    if args.branch == ALIAS:
+        client.set_registered_model_alias(MODEL_NAME, ALIAS, version)
+    print("mlflow: {} -> {} version {}{}  {}".format(
+        args.branch, MODEL_NAME, version, " (@main)" if args.branch == ALIAS else "",
+        description.splitlines()[-2]))
 
 
 if __name__ == '__main__':
