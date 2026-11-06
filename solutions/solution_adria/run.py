@@ -59,7 +59,9 @@ def team_probability(match):
     obs = as_obs(match)
     _, X = FT.frame_features(obs)
     rows = FT.sample_rows(obs)
-    p = lgb.Booster(model_file=TEAM_MODEL).predict(X[rows])
+    with open(TEAM_MODEL) as f:  # text mode: a Windows checkout's CRLF would break LightGBM's parser
+        booster = lgb.Booster(model_str=f.read())
+    p = booster.predict(X[rows])
     return FT.expand(p, rows, match.n, match.halves)
 
 
