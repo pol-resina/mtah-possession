@@ -12,9 +12,9 @@ pixels, no Smart Tagging, no ground truth.
 17 possessions are too few to rank versions: the spellF1 bootstrap band is 0.39–0.76.
 
 ```bash
-python solution/run.py                  # writes evaluation/results/solution.csv
-python evaluation/run_evaluation.py     # scores it
-python solution/diagnostics.py --sweep  # checks it (see below)
+python solutions/solution_pol_5e9d334/run.py            # writes evaluation/results/solution_pol_5e9d334.csv
+python evaluation/run_evaluation.py                     # scores it
+python solutions/solution_pol_5e9d334/diagnostics.py --sweep  # checks it (see below)
 ```
 
 ## The one idea used twice

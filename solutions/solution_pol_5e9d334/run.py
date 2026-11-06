@@ -1,11 +1,11 @@
 """Build the submission from tracking data alone: dead ball first, then possession.
 
-    python solution/run.py                    # writes evaluation/results/solution.csv
-    python solution/run.py --no-broadcast     # tactical camera's tracking only
+    python solutions/solution_pol_5e9d334/run.py                 # evaluation/results/solution_pol_5e9d334.csv
+    python solutions/solution_pol_5e9d334/run.py --no-broadcast  # tactical camera's tracking only
     python evaluation/run_evaluation.py       # scores it
 
 Inputs: both cameras' tracking (ATD). No video pixels, no Smart Tagging, no ground truth. The same
-inputs always give the same file, byte for byte, as RULES.md requires. solution/README.md explains
+inputs always give the same file, byte for byte, as RULES.md requires. README.md explains
 the method.
 """
 
@@ -15,13 +15,17 @@ import sys
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))  # solutions/<this folder>/ -> repository
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
 from baseline import write_submission  # noqa: E402
 from load_smart_tagging import KICKOFF_VIDEO_FRAMES  # noqa: E402
-from solution import broadcast, deadball, possession, tracking  # noqa: E402
-from solution.segments import label_runs  # noqa: E402
+import broadcast  # noqa: E402
+import deadball  # noqa: E402
+import possession  # noqa: E402
+import tracking  # noqa: E402
+from segments import label_runs  # noqa: E402
 
 # Params
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
@@ -53,7 +57,7 @@ def summary(labels, match):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--name", default="solution", help="file name on the board")
+    parser.add_argument("--name", default=os.path.basename(HERE), help="file name on the board")
     parser.add_argument("--out", default=RESULTS_DIR, help="where to write")
     parser.add_argument("--no-broadcast", action="store_true",
                         help="use the tactical camera's tracking only")

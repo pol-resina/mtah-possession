@@ -15,7 +15,8 @@ from types import SimpleNamespace
 import numpy as np
 import pandas as pd
 
-from . import possession, tracking
+import possession
+import tracking
 
 # Params
 SOURCE = "broadcast"

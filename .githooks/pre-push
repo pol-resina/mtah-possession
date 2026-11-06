@@ -1,6 +1,7 @@
 #!/bin/sh
-# Register pushed commits as MLflow model versions (see mlops/README.md): every push to main, and a
-# push to any other branch only if it beats the remote's main on the public window.
+# Register the solutions in solutions/ as MLflow model versions (see mlops/README.md): every new or
+# changed solution pushed to main, and on any other branch only those that beat main's best solution
+# on the public window.
 # The code comes from a clean export of the pushed commit, not from the working tree.
 # Never blocks the push: if registration fails, it says so and the push goes on.
 

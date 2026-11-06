@@ -13,14 +13,14 @@ Each half goes through five steps (segment_half):
   5. restart  each stoppage ends RESTART_LAG frames after its restart kick; a short one that no line
               crossing explains and nobody restarts is slow build-up play, and is dropped
 
-Where each number comes from is in solution/README.md.
+Where each number comes from is in README.md.
 """
 
 from collections import namedtuple
 
 import numpy as np
 
-from .segments import rolling_mean, runs, two_state
+from segments import rolling_mean, runs, two_state
 
 # [start, stop) in video frames, the restart kick (or None), and the frame the ball crossed a line
 # if that is how the stoppage began (or None).

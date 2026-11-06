@@ -12,12 +12,14 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
-from solution import tracking, deadball, possession  # noqa
-from solution.segments import runs, label_runs  # noqa
+SOLUTION = "solution_pol_5e9d334"  # the solution the slides describe, in solutions/
+sys.path.insert(0, os.path.join(ROOT, "solutions", SOLUTION))
+import tracking, deadball, possession  # noqa
+from segments import runs, label_runs  # noqa
 
 m = tracking.load()
 gt = pd.read_csv(os.path.join(ROOT, "evaluation/gt/BAR-ATH_possession_gt_public.csv"))["label"].values
-sol = pd.read_csv(os.path.join(ROOT, "evaluation/results/solution.csv"))["label"].values
+sol = pd.read_csv(os.path.join(ROOT, "evaluation/results", SOLUTION + ".csv"))["label"].values
 b50 = pd.read_csv(os.path.join(ROOT, "evaluation/results/baseline_smooth50.csv"))["label"].values
 braw = pd.read_csv(os.path.join(ROOT, "evaluation/results/baseline_raw.csv"))["label"].values
 

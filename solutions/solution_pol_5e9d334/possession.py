@@ -16,8 +16,8 @@
 
 import numpy as np
 
-from . import deadball
-from .segments import runs, two_state
+import deadball
+from segments import runs, two_state
 
 # Params
 CONTROL_RADIUS = 1.5     # metres: contact range, allowing for ~0.5 m of tracking noise

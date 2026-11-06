@@ -1,7 +1,7 @@
 """Check a submission without tuning against the five public minutes.
 
-    python solution/diagnostics.py            # every check, with the current parameters
-    python solution/diagnostics.py --sweep    # the same, with each parameter halved and doubled
+    python solutions/solution_pol_5e9d334/diagnostics.py          # every check, current parameters
+    python solutions/solution_pol_5e9d334/diagnostics.py --sweep  # each parameter halved and doubled
 
 The public ground truth has 17 possessions and 4 stoppages -- far too few to choose anything with.
 It is reported with its bootstrap band so the noise is visible, but the checks that decide anything
@@ -26,14 +26,19 @@ import sys
 
 import numpy as np
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(os.path.dirname(HERE))  # solutions/<this folder>/ -> repository
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "evaluation"))
 sys.path.insert(0, os.path.join(ROOT, "starter"))
 import load_smart_tagging  # noqa: E402
 import possession_metrics as pm  # noqa: E402
-from solution import broadcast, deadball, possession, run, tracking  # noqa: E402
-from solution.segments import label_runs  # noqa: E402
+import broadcast  # noqa: E402
+import deadball  # noqa: E402
+import possession  # noqa: E402
+import run  # noqa: E402
+import tracking  # noqa: E402
+from segments import label_runs  # noqa: E402
 
 # Params
 PUBLIC_GT = os.path.join(ROOT, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv")
