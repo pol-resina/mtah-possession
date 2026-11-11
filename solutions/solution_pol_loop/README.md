@@ -32,6 +32,48 @@ python evaluation/run_evaluation.py         # scores it
    stops the label flickering on noisy frames, and because each live stretch is decoded
    separately, possession can change freely across a stoppage.
 
+## The dead ball
+
+`deadball.py` decides, half by half from the kickoff, which graded frames are stoppages (graded
+frames before a half's kickoff are dead). It works in six steps:
+
+1. **Score.** Every frame gets a dead-ball score in log-odds (the logarithm of how much likelier a
+   stoppage is than live play; positive means stoppage). It adds up the players' speed (the mean
+   of the five fastest, neutral at 2.6 m/s: walking below, running above), the ball being
+   untracked or more than 0.5 m beyond a line, fewer than 18 players tracked, and a broadcast
+   cut-away while the ball is quiet.
+2. **Smooth.** A two-state minimum-cost labelling, the same kind as for the team, turns the score
+   into stoppages: opening or closing one needs a couple of seconds of consistent evidence.
+3. **Latch.** Once the ball crosses a line, play stays dead until a restart from a spot the Laws
+   of the Game allow for that line: a throw-in from the touchline, a goal kick from the goal area,
+   a corner from the corner arc, or a kickoff from the centre spot after a goal.
+4. **Tidy.** Live gaps shorter than 1 s between two stoppages are merged, and stoppages shorter
+   than 2 s are dropped.
+5. **Restart.** A restart kick is the ball going from quiet (untracked, out, or slower than
+   3 m/s) to played (inside the pitch at 5 m/s or more). Each stoppage ends 10 frames after its
+   kick; one shorter than 6 s with no line crossing and no kick is slow build-up play, and is
+   dropped.
+6. **Goals.** A stoppage that ends in a kickoff (at least 90 % of the tracked players in their own
+   half) starts when the ball was last tracked, not when the players slowed down.
+
+Steps 1, 5 and 6 hold the three dead-ball additions described below.
+
+## The broadcast camera
+
+`broadcast.py` puts the broadcast camera's tracking on the tactical frames, in two steps:
+
+1. **Align.** The two recordings start at different moments, but a live broadcast runs in real
+   time, replays included, so one constant offset per half maps every broadcast frame onto its
+   tactical frame. It is the offset at which the two cameras' balls are within 2 m of each other on
+   the most seconds, refined to the single frame; if even the best one leaves them 2 m or more
+   apart, that half gets no broadcast data. For this match: 4,014 frames in the first half and
+   26,920 in the second.
+2. **Cut.** A replay, close-up or crowd shot has no valid homography, so a tactical frame whose
+   broadcast frame has none is marked as cut away: a sign, not proof, that play is stopped.
+
+`run.py` passes two things on to the dead-ball step: the cut-aways (step 1) and the broadcast's
+ball, to tell when neither camera has the ball (the false restarts of step 5).
+
 ## The three dead-ball additions
 
 The dead-ball step has three rules that use the broadcast camera or the Laws of the Game.
@@ -74,6 +116,21 @@ the output.
 
 Smart Tagging's phase agreement is reported but proves little: it tags coarse phases and disagrees
 with short possessions everywhere, so it rewards any change that removes one.
+
+## The team features
+
+`features.py` builds 530 columns per frame from the tactical tracking. None follows a single
+player: every feature is about a team, the whole pitch or the ball, so the tracker's identity
+switches barely matter. Positions are measured towards the goal the home team attacks, so a
+feature means the same in both halves, and goalkeeper tracks get the team defending their half.
+
+| group | features |
+|---|---|
+| ball | tracked or not, position, distance to the lines, speed, change of direction, time since and until it is tracked, still or not; while it is lost, its last known position |
+| ball and teams | the nearest player of each team and their difference, players of each team within 3 m and 5 m, which team is closer when a player is within 1.5 m, the ball's distance ahead of each team's centroid |
+| without the ball | per team: centroid, spread, front and back line, mean and 90th-percentile speed, forward velocity, players tracked; the speed of the five fastest players overall |
+| time | seconds since the half's kickoff |
+| context | the mean, minimum and maximum of 16 of the above over windows of 0.4, 1, 2, 5 and 10 s, before and after the frame (the match is labelled offline, so looking ahead is allowed) |
 
 ## The team model
 
