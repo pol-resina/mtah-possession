@@ -1,17 +1,19 @@
-"""The broadcast camera's tracking (ATD, not video) as a second witness of contact and stoppages.
+"""Broadcast camera: its tracking aligned to the tactical frames, as a second view of the match.
 
-The broadcast camera is zoomed in on the ball, so it sees duels the wide tactical camera blurs.
-And it is cut by a TV director, who leaves the wide game shot for replays and close-ups almost
-only while play is stopped.
+Role in the project
+-------------------
+Reads the broadcast ATD (never the video) and re-indexes it by tactical frame. run.py's
+dead_ball() passes two of its outputs to deadball.py:
+  - cut   extra evidence of a stoppage (dead_score)
+  - bx    the broadcast's ball: where neither camera has the ball (`blind`), a restart kick is
+          not believed (find_restart)
 
-  1. align    a live broadcast runs in real time, so one constant offset per half maps it onto the
-              tactical frames: the offset whose ball positions match the tactical ball most often,
-              refined to the frame
-  2. cut      a tactical frame whose aligned broadcast frame has no valid homography is cut away
-              (replay, close-up or crowd shot: DATA.md), which deadball.py reads as stoppage
-              evidence
-  3. contact  on every other aligned frame, clear contacts are read exactly as from the tactical
-              camera, goalkeeper fix included
+The two steps
+-------------
+  1. align  The two recordings start at different moments, so the broadcast is shifted onto the
+            tactical frames: one fixed offset per half, where the two balls coincide most.
+  2. cut    A replay, close-up or crowd shot has no valid homography; its frame is marked `cut`,
+            a sign (not proof) that play is stopped.
 """
 
 from types import SimpleNamespace
@@ -29,7 +31,11 @@ REFINE_FRAMES = 50        # frame-level search either side of the best whole-sec
 
 
 def load_raw(game=tracking.GAME, data_dir=None):
-    """(players (frames, slots, 3), ball (frames, 3), team per slot, homography valid per frame)."""
+    """Load the broadcast inputs (input step).
+
+    Returns (players (frames, slots, 3), ball (frames, 3), team per slot, homography `valid` per
+    frame), indexed by broadcast frame.
+    """
     meta_path, raw_path, homography_path = tracking.require(
         ["atd_meta", "atd_raw", "homography"], game, data_dir, SOURCE)
     team = tracking.team_of_each_track(meta_path)
@@ -39,7 +45,10 @@ def load_raw(game=tracking.GAME, data_dir=None):
 
 
 def per_second(values, fps):
-    """Mean of each whole second, ignoring NaN; NaN where a second has nothing."""
+    """1 s averages of a per-frame signal, for the coarse offset search (align step).
+
+    Returns one mean per whole second, ignoring NaN; NaN where a second has nothing.
+    """
     k = len(values) // fps
     block = values[:k * fps].reshape(k, fps)
     seen = ~np.isnan(block)
@@ -49,9 +58,10 @@ def per_second(values, fps):
 
 
 def find_offset(match, bx, by, first, last):
-    """Step 1 for one half: frames to add to a broadcast frame to get the tactical frame, or None
-    if even the best offset leaves the two balls more than MATCH_DISTANCE apart (median): then the
-    two recordings do not show the same play, and the broadcast is left out of that half.
+    """Find how far the broadcast is shifted from the tactical video in one half (align step).
+
+    Returns the offset in frames (tactical frame = broadcast frame + offset), or None if the two
+    balls never line up, in which case that half gets no broadcast data.
     """
     fps = match.fps
     tx, ty = per_second(match.bx, fps), per_second(match.by, fps)
@@ -82,10 +92,11 @@ def find_offset(match, bx, by, first, last):
 
 
 def on_tactical_timeline(match, game=tracking.GAME, data_dir=None):
-    """The broadcast tracking re-indexed by tactical frame, NaN wherever it is not usable.
+    """Put the broadcast tracking on tactical frames (align and cut steps) for dead_ball().
 
-    Also `cut`, per tactical frame: its aligned broadcast frame exists and has no valid homography
-    (step 2). Frames with no aligned broadcast frame are False.
+    Returns a namespace indexed by tactical frame, from which run.py reads `cut` (the broadcast is
+    on a replay, close-up or crowd shot) and `bx` (where the broadcast saw the ball at that frame,
+    NaN where unusable).
     """
     players, ball, team, valid = load_raw(game, data_dir)
     ball_x, ball_y = ball[:, 0] * match.length, ball[:, 1] * match.width

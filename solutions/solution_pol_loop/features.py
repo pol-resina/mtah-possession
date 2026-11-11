@@ -1,22 +1,28 @@
-"""Copied from FCB_challenges/bench/features.py (top_speed from bench/stats.py): keep in step.
+"""Team-model features: what the learned P(home) reads on every frame, from the tactical tracking.
 
-Per-frame features for the learned models, from tracking only, computed at 25 fps and sampled
-at 5 Hz.
+Role in the project
+-------------------
+Second stage of the pipeline. run.py's team_probability() builds these features, the LightGBM
+model in team_model.txt turns each 5 Hz row into P(home | ball alive), and run.py decodes that
+inside the live stretches.
 
-Nothing follows a player: every feature is collective (per team or global) or about the ball, so
-identity switches and fragmented slots barely matter. Goalkeeper tracks get the team defending the
-half they stand in (the fix from solution/tracking.py), since that is the one team error we know the
-ATD makes.
+The three steps
+---------------
+  1. features  Every column for every frame at 25 fps. All are collective (per team, global or
+               about the ball), never per player, so slot switches barely matter; x runs towards
+               the goal the home team attacks, and goalkeeper tracks get the team defending their
+               half (tracking.team_per_frame).
+  2. sample    One row every STEP frames inside the graded halves: the rows the model scores.
+  3. expand    Each frame takes the prediction of its nearest row.
 
-All coordinates are in the home team's attacking frame: x grows towards the goal home attacks, so a
-feature means the same in both halves. Swapping H and A (augmentation) then only needs the team
-array flipped and the frame mirrored, which build() does when swap=True.
+Feature groups
+--------------
+  ball       seen, position, distance to lines, speed, turn, time since / until seen, still
+  ball-team  nearest player per team, their difference, players within 3 and 5 m
+  no ball    per team: centroid, spread, mean / p90 speed, forward velocity, count; global speed
+  time       seconds from the half's kickoff
+  context    mean / min / max of 16 of the above over past and future windows of 0.4-10 s
 
-Groups (the plan's table):
-    ball         seen, position, distance to lines, speed, turn, time since / until seen, still
-    ball-team    nearest player per team, their difference, players within 3 and 5 m
-    no ball      per team: centroid, spread, mean / p90 speed, forward velocity, count; global speed
-    context      mean / min / max over past and future windows of 0.4, 1, 2, 5, 10 s
 """
 
 import numpy as np
@@ -26,9 +32,10 @@ TOP_K = 5  # fastest players in top_speed
 
 
 def top_speed(players_m, fps=25, half_width=12):
-    """Mean speed of the TOP_K fastest tracked players per frame, 1 s centred mean, m/s.
+    """How fast the players move, a no-ball feature (features step).
 
-    Slot jumps (> 12 m/s) are ignored, as in solution/tracking.py.
+    Returns per frame the mean speed (m/s) of the TOP_K fastest tracked players, 1 s centred mean;
+    slot jumps over 12 m/s are ignored.
     """
     sp = np.hypot(np.gradient(players_m[:, :, 0], axis=0),
                   np.gradient(players_m[:, :, 1], axis=0)) * fps
@@ -47,24 +54,31 @@ def top_speed(players_m, fps=25, half_width=12):
     return np.where(c > 0, (cs[hi] - cs[lo]) / np.maximum(c, 1), np.nan)
 
 STEP = 5                       # 25 fps -> 5 Hz
-WINDOWS_S = (0.4, 1.0, 2.0, 5.0, 10.0)
+WINDOWS_S = (0.4, 1.0, 2.0, 5.0, 10.0)  # context window lengths, seconds
 FPS = 25
 
 
 def _team_at(px, py, team, halves, attacks_right, L, W):
+    """Team of every slot on every frame, goalkeeper fix included (features step)."""
     from tracking import team_per_frame
     return team_per_frame(px, py, team, halves, attacks_right, L, W)
 
 
 def _since(seen):
-    """Frames since the last True (0 on True frames); large before the first."""
+    """Time since the ball was last seen, for ball_since_s and ball_until_s (features step).
+
+    Returns per frame the frames since the last True (0 on True frames); large before the first.
+    """
     idx = np.arange(len(seen))
     last = np.maximum.accumulate(np.where(seen, idx, -10 ** 6))
     return (idx - last).astype(np.float32)
 
 
 def _hold(x, seen):
-    """Last seen value carried forward (NaN before the first)."""
+    """The last known ball position, used while the ball is lost (features step).
+
+    Returns the last seen value carried forward (NaN before the first).
+    """
     idx = np.where(seen, np.arange(len(x)), 0)
     idx = np.maximum.accumulate(idx)
     out = x[idx].copy()
@@ -73,6 +87,10 @@ def _hold(x, seen):
 
 
 def _nanmean_window(x, w):
+    """Moving average, for ball_speed and the context means (features step).
+
+    Returns the centred mean over w frames, ignoring NaN; NaN where the window has nothing.
+    """
     ok = ~np.isnan(x)
     s = uniform_filter1d(np.where(ok, x, 0.0), w, mode="nearest")
     c = uniform_filter1d(ok.astype(np.float64), w, mode="nearest")
@@ -80,7 +98,10 @@ def _nanmean_window(x, w):
 
 
 def _shift(x, k):
-    """y[t] = x[t + k], edge-padded."""
+    """Turn a centred window into a past or a future one, for context (features step).
+
+    Returns y with y[t] = x[t + k], edge-padded.
+    """
     if k == 0:
         return x
     out = np.empty_like(x)
@@ -94,7 +115,10 @@ def _shift(x, k):
 
 
 def _row_p90(a):
-    """np.nanpercentile(a, 90, axis=1) (linear interpolation), via one sort."""
+    """Each team's p90 player speed (features step).
+
+    Returns np.nanpercentile(a, 90, axis=1) (linear interpolation), via one sort.
+    """
     s = np.sort(a, axis=1)  # NaN last
     c = (~np.isnan(a)).sum(1)
     pos = 0.9 * np.maximum(c - 1, 0)
@@ -106,7 +130,12 @@ def _row_p90(a):
 
 
 def context(x, name):
-    """{name_stat_dir_w: array}: mean, min, max over past / future windows."""
+    """The context group: one signal summarised over past and future windows (features step).
+
+    Returns {name_stat_dir_w: array}: stat is mean, min or max; dir is p (the window ends at the
+    frame) or f (it starts there); w is one of WINDOWS_S. Looking up to 10 s ahead is fine: the
+    match is labelled offline.
+    """
     out = {}
     finite = ~np.isnan(x)
     big = 1e6
@@ -126,7 +155,10 @@ def context(x, name):
 
 
 def frame_features(obs, swap=False):
-    """(names, matrix (n, F) float32) at 25 fps. swap=True: H and A exchanged, frame mirrored."""
+    """Build every feature column for every frame (features step), from run.py's as_obs().
+
+    Returns (names, matrix (frames, 530) float32) at 25 fps.
+    """
     L, W = obs.pitch
     P, B = obs.track["players"], obs.track["ball"]
     team = np.asarray(obs.track["team"]).astype(np.int64)
@@ -237,13 +269,17 @@ def frame_features(obs, swap=False):
                    "n_visible", "ball_x", "n_home_3m", "n_away_3m")
     for s in ctx_signals:
         f.update(context(f[s], s))
+
     names = list(f)
     X = np.column_stack([np.asarray(f[k], dtype=np.float32) for k in names])
     return names, X
 
 
 def sample_rows(obs):
-    """5 Hz rows inside the graded halves: indices into the 25 fps arrays."""
+    """Pick the rows the model scores (sample step).
+
+    Returns the frame indices of one row every STEP frames inside the graded halves.
+    """
     rows = []
     for _, a, b in obs.halves:
         rows.append(np.arange(a + STEP // 2, b + 1, STEP))
@@ -251,7 +287,11 @@ def sample_rows(obs):
 
 
 def expand(values_5hz, rows, n, halves):
-    """Back to 25 fps: each graded frame takes its nearest 5 Hz row in the same half."""
+    """Spread the 5 Hz predictions back to every frame (expand step).
+
+    Returns an array over all n frames: each graded frame takes its nearest row in the same half,
+    and frames outside the halves are 0.
+    """
     out = np.zeros((n,) + values_5hz.shape[1:], dtype=values_5hz.dtype)
     for _, a, b in halves:
         sel = np.flatnonzero((rows >= a) & (rows <= b))

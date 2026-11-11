@@ -1,22 +1,21 @@
-"""Dead ball: which graded frames are stoppages, and where each one ends.
+"""Dead ball: which graded frames are stoppages, and where each one starts and ends.
 
-Each half goes through five steps (segment_half):
+Role in the project
+-------------------
+First stage of the pipeline. run.py's dead_ball() calls detect(), and every frame marked dead is
+labelled D; the team model then labels H / A only inside the live stretches between stoppages.
 
-  1. score    every frame gets a dead-ball score in log-odds, from five tracking signals: how fast
-              the five fastest players move, whether the ball is tracked, whether it is beyond a
-              line, whether few players are tracked, and whether the broadcast has cut away from
-              the game shot (replay, close-up) while the ball is quiet
-  2. smooth   a two-state Viterbi turns the score into stoppages: one needs a couple of seconds of
-              evidence to open, and again to close
-  3. latch    once the ball crosses a line, play is dead until a restart from a spot the Laws of
-              the Game allow for that line (throw-in, goal kick, corner, kickoff)
-  4. tidy     very short live gaps between stoppages are absorbed, very short stoppages dropped
-  5. restart  each stoppage ends RESTART_LAG frames after its restart kick; a short one that no line
-              crossing explains and nobody restarts is slow build-up play, and is dropped
-  6. goals    a stoppage that ends with a kickoff followed a goal, and a goal kills the ball
-              (Law 10): it starts when the ball was last tracked, not when the players slow down
-
-Where each number comes from is in README.md.
+The six steps (per half, from its kickoff)
+------------------------------------------
+  1. score    A per-frame dead-ball score (log-odds) from the players' speed, the ball missing or
+              out, few players tracked, and broadcast cuts while the ball is quiet.
+  2. smooth   A two-state Viterbi turns the score into stoppages: a couple of seconds of evidence
+              to open one, and again to close it.
+  3. latch    A ball over a line keeps play dead until a restart from a spot the Laws allow.
+  4. tidy     Very short live gaps are merged, very short stoppages dropped.
+  5. restart  Each stoppage ends RESTART_LAG frames after its restart kick; a short one with no
+              line crossing and no restart is slow play, and is dropped.
+  6. goals    A stoppage that ends in a kickoff starts when the ball was last tracked (the goal).
 """
 
 from collections import namedtuple
@@ -25,8 +24,7 @@ import numpy as np
 
 from segments import rolling_mean, runs, two_state
 
-# [start, stop) in video frames, the restart kick (or None), and the frame the ball crossed a line
-# if that is how the stoppage began (or None).
+# One detected stoppage: [start, stop) in video frames, and its restart kick (or None).
 Stoppage = namedtuple("Stoppage", "start stop kick crossed")
 
 # Params
@@ -40,26 +38,22 @@ MISSING_WEIGHT = 1.5          # ball not tracked
 OUT_MARGIN = 0.5              # metres beyond a line before the ball counts as out
 OUT_WEIGHT = 4.0              # ball out
 FEW_PLAYERS = 18              # fewer tracked players than this: players bunched together
-FEW_PLAYERS_WEIGHT = 1.0
-# Broadcast cut away (no homography: replays, close-ups; DATA.md) while the ball is quiet: 61.3% of
-# quiet dead frames vs 13.1% of quiet live frames over the whole match, ln(0.613/0.131); 1.46
-# against latched line-crossing stoppages; per half 1.72 / 1.38 (research exp 003)
-CUT_AWAY_WEIGHT = 1.54
+FEW_PLAYERS_WEIGHT = 1.0      # few players tracked
+CUT_AWAY_WEIGHT = 1.54        # broadcast cut away while the ball is quiet
 # 2. smooth
 SWITCH_COST = 40.0            # evidence a stoppage needs to open, and again to close
-# 3. latch: where a restart may be taken, widened by SPOT_MARGIN because a restart is detected a
-# few frames after the kick, a few metres down the ball's path
+# 3. latch
 OUT_MIN_FRAMES = 3            # frames beyond a line before it counts as a crossing
 OUT_RESTART_REACH = 60        # seconds a crossing waits for its restart
 THROW_IN_BAND = 2.0           # metres inside the touchline
 GOAL_AREA = (5.5, 9.16)       # depth and half-width, metres
 CORNER_REACH = 1.0            # metres from the corner flag
 CENTRE_REACH = 1.0            # metres from the centre spot (a goal, then a kickoff)
-SPOT_MARGIN = 3.0
+SPOT_MARGIN = 3.0             # metres of slack on each spot: a kick is detected a few frames late
 # 4. tidy
 MIN_ALIVE = 25                # frames; shorter live gaps between stoppages are absorbed
 MIN_DEAD = 50                 # frames; shorter stoppages are dropped
-# 5. restart: the ball going from quiet to played
+# 5. restart
 RESTART_SPEED = 5.0           # m/s; at least this fast inside the pitch, the ball is being played
 QUIET_SPEED = 3.0             # m/s; slower than this (or untracked, or out), it is not
 QUIET_LOOKBACK = 50           # frames before a restart that must be mostly quiet...
@@ -71,8 +65,7 @@ RESTART_BLIND = 100           # ...or by this many (4 s, the tracker's own gap l
 RESTART_BLIND_SHARE = 0.5     # most of them, no camera has the ball: it was put down, not played
 RESTART_LAG = 10              # frames from the detected restart to the first live frame
 UNCONFIRMED_MIN = 150         # frames; a shorter stoppage needs a line crossing or a restart
-# 6. goals: at a kickoff every player is in their own half (Law 8). Over this match's 115 restarts
-# the share of tracked players in their own half is 0.4-0.8 for 110 and 0.95-1.00 for the 5 kickoffs
+# 6. goals
 KICKOFF_OWN_HALF = 0.9        # share of tracked players in their own half that makes a kickoff
 OWN_HALF_SLACK = 1.0          # metres over the halfway line still counted as the own half
 KICKOFF_LOOKBACK = 5          # frames before the restart on which the players are looked at
@@ -81,7 +74,10 @@ KICKOFF_LOOKBACK = 5          # frames before the restart on which the players a
 # -- signals ------------------------------------------------------------------------------------
 
 def activity(match):
-    """Mean speed of the ACTIVITY_TOP_K fastest players on each frame, 1 s centred mean, m/s."""
+    """How fast the players move, the main stoppage signal (score step).
+
+    Returns per frame the mean speed (m/s) of the ACTIVITY_TOP_K fastest players, 1 s centred mean.
+    """
     speed = np.where(np.isnan(match.speed), -1.0, match.speed)
     fastest = np.sort(speed, axis=1)[:, -ACTIVITY_TOP_K:]
     counted = fastest >= 0
@@ -92,14 +88,21 @@ def activity(match):
 
 
 def ball_out(match):
-    """True where the ball is tracked and more than OUT_MARGIN beyond a line."""
+    """Ball out of play (score and latch steps).
+
+    Returns per frame True where the ball is tracked and more than OUT_MARGIN beyond a line.
+    """
     with np.errstate(invalid="ignore"):
         return match.ball_seen & ((match.bx < -OUT_MARGIN) | (match.bx > match.length + OUT_MARGIN)
                                   | (match.by < -OUT_MARGIN) | (match.by > match.width + OUT_MARGIN))
 
 
 def dead_score(match):
-    """Step 1: per-frame log-odds that the ball is dead. Positive means stoppage."""
+    """Combine the tracking signals into one dead-ball score (score step).
+
+    Returns per frame the log-odds that the ball is dead (positive: stoppage). detect() then adds
+    the broadcast cuts.
+    """
     score = np.clip((ACTIVITY_MID - np.nan_to_num(activity(match), nan=0.0)) / ACTIVITY_SCALE,
                     -ACTIVITY_CLIP, ACTIVITY_CLIP)
     tracked = (~np.isnan(match.px)).sum(axis=1)
@@ -108,7 +111,12 @@ def dead_score(match):
 
 
 def played_and_quiet(match):
-    """(played, quiet) per frame: the ball moving fast inside the pitch / not being played."""
+    """Two flags on the ball: to find restart kicks (latch, restart) and to gate the cuts (score).
+
+    Returns (played, quiet) per frame. played: tracked, inside the pitch and at RESTART_SPEED or
+    faster, so just kicked. quiet: untracked, out, or slower than QUIET_SPEED, so not in play. A
+    restart kick is a played frame after mostly quiet ones.
+    """
     out = ball_out(match)
     with np.errstate(invalid="ignore"):
         played = match.ball_seen & ~out & (match.bspeed >= RESTART_SPEED)
@@ -117,10 +125,10 @@ def played_and_quiet(match):
 
 
 def restart_candidates(played, quiet, start, stop):
-    """Frames in [start, stop) where the ball goes from quiet to played, oldest first.
+    """Candidate restart kicks (latch and restart steps).
 
-    The first frame of a run of played frames whose QUIET_LOOKBACK frames before are mostly
-    quiet: a pass is preceded by play, a restart by a stoppage.
+    Returns the frames in [start, stop) where the ball goes from quiet to played, oldest first: a
+    pass is preceded by play, a restart by a stoppage.
     """
     out = []
     for a, _ in runs(played, start, stop):
@@ -133,7 +141,10 @@ def restart_candidates(played, quiet, start, stop):
 # -- where a restart can be taken (Laws of the Game) --------------------------------------------
 
 def restart_spot(match, frame):
-    """'corner', 'goal_area', 'centre', 'touchline' or None: where the ball is on this frame."""
+    """Which restart spot the ball is on (latch step).
+
+    Returns 'corner', 'goal_area', 'centre', 'touchline' or None for this frame.
+    """
     if frame is None or not match.ball_seen[frame]:
         return None
     x, y = match.bx[frame], match.by[frame]
@@ -152,28 +163,44 @@ def restart_spot(match, frame):
 
 
 def crossed_goal_line(match, frame):
-    """True if the ball, out on this frame, is beyond a goal line rather than a touchline."""
+    """Which line the ball went over, which decides its legal restarts (latch step).
+
+    Returns True if the ball, out on this frame, is beyond a goal line rather than a touchline.
+    """
     beyond_x = max(-match.bx[frame], match.bx[frame] - match.length)
     beyond_y = max(-match.by[frame], match.by[frame] - match.width)
     return beyond_x > beyond_y
 
 
 def legal_restart(match, frame, goal_line):
-    """Could the restart after the ball crossed a goal line (or a touchline) be taken from here?"""
+    """Check a candidate kick against the Laws of the Game (latch step).
+
+    Returns True if the restart after a goal-line (or touchline) crossing can be taken from where
+    the ball is on this frame.
+    """
     allowed = ("corner", "goal_area", "centre") if goal_line else ("corner", "touchline")
     return restart_spot(match, frame) in allowed
 
 
-# -- the five steps -----------------------------------------------------------------------------
+# -- steps 2 to 6 -------------------------------------------------------------------------------
 
 def smooth(score):
-    """Step 2: dead-ball mask for one half, from its score starting at the kickoff."""
+    """Turn one half's score into stoppages (smooth step).
+
+    Returns the half's dead-ball mask (True = dead), from its kickoff.
+    """
+    # State 1 is dead. Being live costs the positive part of the score and being dead the negative
+    # part, so the decoder follows the score's sign except where a switch (SWITCH_COST each way)
+    # would not pay for itself. start_cost: a half begins live, at its kickoff.
     return two_state(np.maximum(score, 0.0), np.maximum(-score, 0.0),
                      SWITCH_COST, SWITCH_COST, start_cost=(0.0, 1e6)).astype(bool)
 
 
 def latch(match, dead, played, quiet, out, first, stop):
-    """Step 3: mark dead from every line crossing to its legal restart. [(crossing, kick)]."""
+    """Mark dead from every line crossing to its legal restart, in `dead` itself (latch step).
+
+    Returns [(crossing frame, restart kick or None)], for find_restart.
+    """
     crossings = []
     for a, b in runs(out, first, stop):
         if b - a < OUT_MIN_FRAMES:
@@ -188,7 +215,10 @@ def latch(match, dead, played, quiet, out, first, stop):
 
 
 def tidy(dead):
-    """Step 4: absorb live gaps shorter than MIN_ALIVE, then drop stoppages shorter than MIN_DEAD."""
+    """Merge very short live gaps, then drop very short stoppages (tidy step).
+
+    Edits `dead` itself (thresholds MIN_ALIVE and MIN_DEAD) and returns nothing.
+    """
     for a, b in runs(~dead):
         if 0 < a and b < len(dead) and b - a < MIN_ALIVE:
             dead[a:b] = True
@@ -198,12 +228,12 @@ def tidy(dead):
 
 
 def find_restart(played, quiet, crossings, start, stop, half_stop, blind=None):
-    """Step 5 for the stoppage [start, stop): (kick or None, crossing or None, began at a line?).
+    """Find the restart kick that ends the stoppage [start, stop) (restart step).
 
-    A stoppage that began with a line crossing ends at that crossing's restart; any other ends at
-    the last quiet-to-played moment inside it (or just after its scored end). A restart followed by
-    RESTART_TRUST more frames of dead score is not believed; nor is one followed by RESTART_BLIND
-    of them when no camera has the ball on most (blind: per frame, or None to skip this).
+    Returns (kick or None, crossing frame or None, whether it began at a line). The kick is the
+    crossing's legal restart if there is one, else the last quiet-to-played moment. It is rejected
+    if the dead score then goes on for RESTART_TRUST frames, or for RESTART_BLIND frames with no
+    camera on the ball.
     """
     def false(c):
         left = stop - c
@@ -227,7 +257,11 @@ def find_restart(played, quiet, crossings, start, stop, half_stop, blind=None):
 
 
 def is_kickoff(match, frame):
-    """Law 8: do the tracked players all stand in their own half on this frame?"""
+    """Tell a kickoff from other restarts (goals step).
+
+    Returns True if at least KICKOFF_OWN_HALF of the tracked players stand in their own half on
+    this frame (Law 8).
+    """
     x, team = match.px[frame], match.team_at[frame]
     seen = ~np.isnan(x)
     if not seen.any():
@@ -242,7 +276,10 @@ def is_kickoff(match, frame):
 
 
 def from_the_goal(match, final, stoppages, first, stop):
-    """Step 6: stoppages that end with a kickoff start at the last frame the ball was tracked."""
+    """Move the start of each stoppage that ends in a kickoff back to the goal (goals step).
+
+    Marks those frames dead in `final` and returns the stoppages with their new starts.
+    """
     out = []
     for s in stoppages:
         restart = s.stop if s.kick is None else s.kick
@@ -257,7 +294,10 @@ def from_the_goal(match, final, stoppages, first, stop):
 
 
 def segment_half(match, score, played, quiet, out, first, stop, blind=None):
-    """Steps 2-6 for one half, kickoff (first) to end (stop): (dead mask, [Stoppage])."""
+    """Run steps 2-6 on one half, from its kickoff (first) to its end (stop).
+
+    Returns (the half's dead-ball mask, [Stoppage]).
+    """
     dead = smooth(score[first:stop])
     crossings = latch(match, dead, played, quiet, out, first, stop)
     tidy(dead)
@@ -275,15 +315,12 @@ def segment_half(match, score, played, quiet, out, first, stop, blind=None):
 
 
 def detect(match, kickoffs, cut=None, blind=None):
-    """(dead mask over every frame, [Stoppage]).
+    """Entry point, called by run.py's dead_ball(): steps 1-6 over the whole match.
 
-    kickoffs: {half: kickoff frame}. Graded frames before a kickoff are dead: the second half is
-    graded from 110,808 but kicks off at 113,742 (FAQ.md).
-    cut: per frame, the broadcast is cut away from the game shot (broadcast.on_tactical_timeline),
-    or None. It adds CUT_AWAY_WEIGHT to the score only where the ball is quiet, so a replay still on
-    air after a quick restart cannot hold play dead; it only adds, because the director is back on
-    the wide shot while a set piece is prepared.
-    blind: per frame, no camera has the ball, or None (find_restart).
+    Returns (dead-ball mask over every frame, [Stoppage]).
+      kickoffs  {half: kickoff frame}; graded frames before a kickoff are dead
+      cut       per frame, the broadcast is cut away; it only counts while the ball is quiet
+      blind     per frame, no camera has the ball; used to reject false restarts
     """
     score = dead_score(match)
     played, quiet = played_and_quiet(match)
