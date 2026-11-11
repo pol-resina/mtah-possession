@@ -1,12 +1,19 @@
-"""Load the tactical tracking (ATD) as numpy arrays in metres, one row per video frame.
+"""Load the tactical camera's automatic tracking data (ATD) as numpy arrays in metres, one row per
+video frame.
 
-Row i is video frame i, so it is also row i of the submission (the raw file counts from 1). The
-file is parsed in one numpy call, so nothing is cached and nothing derived from the tracking is ever
-written to disk -- RULES.md forbids publishing it.
+WHAT IT IS FOR
+    The single place where the raw tracking file becomes arrays (positions, speeds, team of each
+    track, graded halves) that every other stage reads.
 
-One correction is made on the way in: the tracker swaps the two goalkeepers between their tracks
-(Athletic's keeper track sometimes follows Barcelona's keeper), so a goalkeeper track is given the
-team that defends the half it is standing in.
+THE IMPORTANT PARTS
+    - Row i is video frame i, so also row i of the submission (the raw file counts from 1; load()
+      checks the ids are 1..n). Nothing derived from the tracking is written to disk: RULES.md
+      forbids publishing it.
+    - Goalkeeper fix: the tracker swaps the two goalkeepers between their tracks, so a goalkeeper
+      track (tracked for a good share of the half and mostly inside a penalty area) is given the
+      team that defends the half it stands in.
+    - Speeds above MAX_PLAYER_SPEED are a track jumping between people and become NaN.
+    - halves is [(half, first frame, last frame)] with the last frame INCLUSIVE.
 """
 
 import os
@@ -21,13 +28,13 @@ ROOT = os.path.dirname(os.path.dirname(HERE))  # solutions/<this folder>/ -> rep
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
 from games import GAME, GAMES, half_video_blocks, require, source_frames  # noqa: E402
-from baseline import team_of_each_track  # noqa: E402
+from baseline import team_of_each_track                                   # noqa: E402
 
 # Params
-MAX_PLAYER_SPEED = 12.0       # m/s; faster than this between two frames is a track jumping people
+MAX_PLAYER_SPEED = 12.0       # (m/s); faster than this between two frames is a track jumping people
 GK_MIN_SHARE = 0.25           # a goalkeeper track is tracked for at least this share of a half...
 GK_BOX_SHARE = 0.6            # ...and spends at least this share of that time in one penalty area
-PENALTY_AREA = (16.5, 20.16)  # depth and half-width, metres
+PENALTY_AREA = (16.5, 20.16)  # depth and half-width (m)
 
 
 def parse_raw(raw_path, n_slots):
@@ -38,10 +45,10 @@ def parse_raw(raw_path, n_slots):
     """
     with open(raw_path) as handle:
         text = handle.read()
-    n_lines = text.count("\n") + (0 if text.endswith("\n") else 1)
+    n_lines = text.count("\n") + (0 if text.endswith("\n") else 1)  # tolerate a missing final newline
     flat = np.fromstring(text.replace(":", ",").replace(";", ",").replace("\n", ","),
                          dtype=np.float64, sep=",")
-    width = 1 + 3 * n_slots + 3
+    width = 1 + 3 * n_slots + 3  # frame id + (x, y, speed) per player slot + (x, y, speed) of the ball
     if flat.size != n_lines * width:
         raise ValueError("{}: expected {} fields per line".format(raw_path, width))
     table = flat.reshape(n_lines, width)
@@ -68,12 +75,15 @@ def team_per_frame(px, py, team, halves, attacks_right, length, width):
         x, y = px[first:last + 1], py[first:last + 1]
         seen = ~np.isnan(x)
         with np.errstate(invalid="ignore"):
+            # in either penalty area (the one at x = 0 or the one at x = length).
             in_box = (np.abs(y - width / 2.0) <= PENALTY_AREA[1]) & (
                 (x <= PENALTY_AREA[0]) | (x >= length - PENALTY_AREA[0]))
         tracked = seen.sum(axis=0)
+        # keeper tracker: present for a large enough share of the half on the same area
         keeper = ((tracked >= GK_MIN_SHARE * len(x))
                   & ((in_box & seen).sum(axis=0) >= GK_BOX_SHARE * np.maximum(tracked, 1)))
-        left_defender = 0 if attacks_right[half] else 1  # who defends the x = 0 goal
+        # the home side defends x = 0 when it attacks right, so the defender of that goal is 0 in that case, else 1.
+        left_defender = 0 if attacks_right[half] else 1
         with np.errstate(invalid="ignore"):
             on_left = x[:, keeper] < length / 2.0
         block = out[first:last + 1]
@@ -92,17 +102,19 @@ def load(game=GAME, data_dir=None):
 
     team = team_of_each_track(meta_path)
     frame_ids, players, ball = parse_raw(raw_path, len(team))
+    # raw ids must be exactly 1..n -> ensures [row i = video frame i]
     if len(frame_ids) != n or frame_ids[0] != 1 or np.any(np.diff(frame_ids) != 1):
         raise ValueError("{}: expected frame ids 1..{}".format(raw_path, n))
 
     px = (players[:, :, 0] * length).astype(np.float32)
     py = (players[:, :, 1] * width).astype(np.float32)
     bx, by = ball[:, 0] * length, ball[:, 1] * width
+    # a NaN position also blanks the speed of its two neighbouring frames
     speed = np.hypot(np.gradient(px, axis=0) * fps, np.gradient(py, axis=0) * fps)
     speed[speed > MAX_PLAYER_SPEED] = np.nan
 
-    halves = half_video_blocks(game)          # [(half, first frame, last frame)] as graded
-    half = np.zeros(n, dtype=np.int8)         # 1 or 2 on graded frames, 0 elsewhere
+    halves = half_video_blocks(game)     # [(half, first frame, last frame)] as graded
+    half = np.zeros(n, dtype=np.int8)    # 1 or 2 on graded frames, 0 elsewhere
     for number, first, last in halves:
         half[first:last + 1] = number
     attacks_right = home_attacks_right(meta_path)

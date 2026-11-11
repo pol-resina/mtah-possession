@@ -1,12 +1,22 @@
-"""solution_pol_loop: Adria's learned team model on a sharper dead ball (three additions to Pol's,
-all in deadball.py: broadcast cut-aways, goals, false restarts).
+"""Entry point: turns the match tracking into the submission CSV (one H / A / D / X per video frame).
 
     python solutions/solution_pol_loop/run.py   # writes evaluation/results/solution_pol_loop.csv
     python evaluation/run_evaluation.py         # scores it
 
-Inputs: both cameras' tracking. From the broadcast camera only two flags per frame are used: is it
-on the game shot, and does it have the ball. No video, no Smart Tagging, no ground truth.
-Deterministic: same inputs, same file. README.md explains it.
+WHAT IT IS FOR
+    Runs the whole pipeline; the other modules in this folder are the stages it calls. Inputs: both
+    cameras' automatic tracking data (ATD); from the broadcast camera only two flags per frame
+    (on the game shot, has the ball). No video, no Smart Tagging, no ground truth. Deterministic.
+    README.md explains the method.
+
+THE IMPORTANT PARTS
+    - Two independent decisions: dead_ball() says WHEN the ball is alive, the team model says WHO
+      has it. build() writes D on dead frames and H / A on live ones.
+    - The team model runs on 5 Hz rows (every 5th frame of the 25 fps tracking); each frame carries
+      1/5 of a row's evidence (ROW_FRAMES).
+    - Team labels are smoothed per live stretch with a two-state Viterbi (segments.two_state); a
+      change of team costs SWITCH_COST, so possession can change freely across a stoppage.
+    - Frames outside the two halves given by KICKOFFS stay X.
 """
 
 import argparse
@@ -21,34 +31,36 @@ ROOT = os.path.dirname(os.path.dirname(HERE))  # solutions/<this folder>/ -> rep
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
-from baseline import write_submission  # noqa: E402
+
+from baseline import write_submission                # noqa: E402 (ignore the "Module level import not at top of file" error)
 from load_smart_tagging import KICKOFF_VIDEO_FRAMES  # noqa: E402
-import games  # noqa: E402
-import broadcast  # noqa: E402
-import deadball  # noqa: E402
-import features as FT  # noqa: E402
-import tracking  # noqa: E402
-from segments import label_runs, runs, two_state  # noqa: E402
+import games                                         # noqa: E402
+import broadcast                                     # noqa: E402
+import deadball                                      # noqa: E402
+import features as FT                                # noqa: E402
+import tracking                                      # noqa: E402
+from segments import label_runs, runs, two_state     # noqa: E402
 
 # Params
 TEAM_MODEL = os.path.join(HERE, "team_model.txt")  # LightGBM, P(home | ball alive), 5 Hz rows
-SWITCH_COST = 1.0       # nats per change of team (the value chosen in every DFL bench fold)
-ROW_FRAMES = 5          # 25 fps frames per 5 Hz row: a frame carries 1/5 of a row's evidence
+SWITCH_COST = 1.0       # to stop label flickering in noisy frames
+ROW_FRAMES = 5          # 25 fps frames, 5 samples per row (5Hz): a frame carries 1/5 of a row's evidence
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
-# Kickoff frame of each half: the first graded frame, and 113,742 (FAQ.md) for the second half.
+# mark first/second halves explicitly; frames before the first, between the two and after the second are labelled "X"
 KICKOFFS = {1: KICKOFF_VIDEO_FRAMES["1st Half"], 2: KICKOFF_VIDEO_FRAMES["2nd Half"]}
 
 
 def as_obs(match):
     """The loaded match in the format features.py reads (positions normalised to the pitch)."""
     L, W = match.length, match.width
-    n, s = match.px.shape
+    n, s = match.px.shape # only need x,y coordinates for features.py
     players = np.full((n, s, 3), np.nan, dtype=np.float32)
+    # divide per pitch size (L = length / W = width) to normalise
     players[:, :, 0] = match.px / L
     players[:, :, 1] = match.py / W
     ball = np.column_stack([match.bx / L, match.by / W]).astype(np.float32)
     meta_path, = games.require(["atd_meta"], match.game)
-    team = np.asarray(tracking.team_of_each_track(meta_path))
+    team =np.asarray(tracking.team_of_each_track(meta_path)) # non-corrected tracking metadata (0 = home / 1 = away)
     return SimpleNamespace(track={"players": players, "ball": ball, "team": team},
                            pitch=(float(L), float(W)), halves=match.halves,
                            attacks_right=match.attacks_right, kickoffs=KICKOFFS,
@@ -68,21 +80,26 @@ def team_probability(match):
 
 
 def dead_ball(match):
-    """(dead mask, stoppages): Pol's dead ball, with the broadcast camera as a second witness: its
+    """(dead mask, stoppages): the dead-ball detector, with the broadcast camera as a second witness: its
     cut-aways are stoppage evidence, and a restart needs a ball in at least one camera."""
-    other = broadcast.on_tactical_timeline(match)
-    blind = ~match.ball_seen & np.isnan(other.bx)
+    other = broadcast.on_tactical_timeline(match) # broadcast tracking on the tactical frame index
+    blind = ~match.ball_seen & np.isnan(other.bx) # when ball is missing in both cameras
     return deadball.detect(match, KICKOFFS, other.cut, blind)
 
 
 def build(match):
-    """(labels, dead mask, stoppages) for a loaded match."""
+    """(labels, dead mask, stoppages) for a loaded match.
+
+    Labels, one per video frame: H = home has the ball, A = away has the ball, D = ball dead,
+    X = not graded (outside the two halves).
+    """
     dead, stoppages = dead_ball(match)
     p = np.clip(team_probability(match), 1e-6, 1 - 1e-6)
     cost_home, cost_away = -np.log(p) / ROW_FRAMES, -np.log(1 - p) / ROW_FRAMES
     out = np.full(match.n, "X", dtype="<U1")
     for _, first, last in match.halves:
         out[first:last + 1] = "D"
+        # when the ball is dead, a home/away noisy record has no effect, the switch penalty doesn't affect it
         for a, b in runs(~dead, first, last + 1):
             state = two_state(cost_home[a:b], cost_away[a:b], SWITCH_COST, SWITCH_COST)
             out[a:b] = np.where(state == 0, "H", "A")
