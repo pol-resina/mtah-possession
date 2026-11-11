@@ -1,12 +1,19 @@
-"""Load the tactical tracking (ATD) as numpy arrays in metres, one row per video frame.
+"""Load the tactical camera's automatic tracking data (ATD) as numpy arrays in metres, one row per
+video frame.
 
-Row i is video frame i, so it is also row i of the submission (the raw file counts from 1). The
-file is parsed in one numpy call, so nothing is cached and nothing derived from the tracking is ever
-written to disk -- RULES.md forbids publishing it.
+WHAT IT IS FOR
+    The single place where the raw tracking file becomes arrays (positions, speeds, team of each
+    track, graded halves) that every other stage reads.
 
-One correction is made on the way in: the tracker swaps the two goalkeepers between their tracks
-(Athletic's keeper track sometimes follows Barcelona's keeper), so a goalkeeper track is given the
-team that defends the half it is standing in.
+THE IMPORTANT PARTS
+    - Row i is video frame i, so also row i of the submission (the raw file counts from 1; load()
+      checks the ids are 1..n). Nothing derived from the tracking is written to disk: RULES.md
+      forbids publishing it.
+    - Goalkeeper fix: the tracker swaps the two goalkeepers between their tracks, so a goalkeeper
+      track (tracked for a good share of the half and mostly inside a penalty area) is given the
+      team that defends the half it stands in.
+    - Speeds above MAX_PLAYER_SPEED are a track jumping between people and become NaN.
+    - halves is [(half, first frame, last frame)] with the last frame INCLUSIVE.
 """
 
 import os

@@ -1,12 +1,19 @@
 """Small shared tools: run-length helpers, a centred rolling mean, and a two-state Viterbi.
 
-Both stages of the pipeline have the same shape -- noisy per-frame evidence for one of two states
-(live/dead, then home/away) and a strong prior that the state changes rarely. two_state() is that
-prior: it picks the labelling that minimises
+WHAT IT IS FOR
+    Both stages (live/dead in deadball.py, home/away in run.py) are noisy per-frame evidence for one
+    of two states plus a strong prior that the state changes rarely. This is the shared machinery.
 
-    sum of per-frame costs  +  a fixed penalty for every change of state
+THE IMPORTANT PARTS
+    - two_state() picks the labelling that minimises
 
-so a change happens only when the evidence for it outweighs the penalty.
+          sum of per-frame costs  +  a fixed penalty for every change of state
+
+      so a change happens only when the evidence outweighs the penalty. Costs are in nats (the unit
+      of information for the natural logarithm; a probability p costs -log p). Ties go to the later
+      change.
+    - Spans from runs() and label_runs() are half-open, [a, b); graded halves elsewhere end on an
+      inclusive last frame.
 """
 
 import numpy as np

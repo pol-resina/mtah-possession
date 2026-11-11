@@ -1,12 +1,22 @@
-"""solution_pol_loop: Adria's learned team model on a sharper dead ball (three additions to Pol's,
-all in deadball.py: broadcast cut-aways, goals, false restarts).
+"""Entry point: turns the match tracking into the submission CSV (one H / A / D / X per video frame).
 
     python solutions/solution_pol_loop/run.py   # writes evaluation/results/solution_pol_loop.csv
     python evaluation/run_evaluation.py         # scores it
 
-Inputs: both cameras' tracking. From the broadcast camera only two flags per frame are used: is it
-on the game shot, and does it have the ball. No video, no Smart Tagging, no ground truth.
-Deterministic: same inputs, same file. README.md explains it.
+WHAT IT IS FOR
+    Runs the whole pipeline; the other modules in this folder are the stages it calls. Inputs: both
+    cameras' automatic tracking data (ATD); from the broadcast camera only two flags per frame
+    (on the game shot, has the ball). No video, no Smart Tagging, no ground truth. Deterministic.
+    README.md explains the method.
+
+THE IMPORTANT PARTS
+    - Two independent decisions: dead_ball() says WHEN the ball is alive, the team model says WHO
+      has it. build() writes D on dead frames and H / A on live ones.
+    - The team model runs on 5 Hz rows (every 5th frame of the 25 fps tracking); each frame carries
+      1/5 of a row's evidence (ROW_FRAMES).
+    - Team labels are smoothed per live stretch with a two-state Viterbi (segments.two_state); a
+      change of team costs SWITCH_COST, so possession can change freely across a stoppage.
+    - Frames outside the two halves given by KICKOFFS stay X.
 """
 
 import argparse
@@ -70,7 +80,7 @@ def team_probability(match):
 
 
 def dead_ball(match):
-    """(dead mask, stoppages): Pol's dead ball, with the broadcast camera as a second witness: its
+    """(dead mask, stoppages): the dead-ball detector, with the broadcast camera as a second witness: its
     cut-aways are stoppage evidence, and a restart needs a ball in at least one camera."""
     other = broadcast.on_tactical_timeline(match) # broadcast tracking on the tactical frame index
     blind = ~match.ball_seen & np.isnan(other.bx) # when ball is missing in both cameras
