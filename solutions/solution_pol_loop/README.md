@@ -143,8 +143,12 @@ team error of 0.087 when the ball is seen and 0.210 when it is not, and it wins 
 4 were worse (-0.004, -0.023 `spellF1`).
 
 `team_model.txt` (LightGBM text format, 400 trees) and `team_model_features.txt` (the feature
-order) were trained outside this repository on all 7 degraded DFL matches, training seeds 100 and
-101, each match also home/away-swapped and mirrored. The DFL data is not in this repository.
+order) were trained by Adrià on all 7 degraded DFL matches, with training seeds 100 and 101 and
+each match also home/away-swapped and mirrored. The DFL data is not in this repository.
+[`training/`](training/README.md) holds the training code: download, degradation, training, and
+the leave-one-match-out bench. It re-implements the same recipe. Retraining with it gives a model
+that is not byte-identical and is not better on our match, so the shipped model is kept;
+`training/README.md` has the comparison.
 `features.py` must build the columns in the order of `team_model_features.txt`, or the model reads
 the wrong columns.
 
