@@ -97,13 +97,10 @@ contact, tactical camera only) reaches 0.289 and 0.738 on the same bench, and th
 on all 7 matches (sign test p = 0.008). The 1.0-nat switch cost was the best value in every
 held-out fold. The shipped model is trained on all 7 matches.
 
-**Training code.** `solution/training/` contains the whole training pipeline:
-downloading the open data, degrading it, training, and the leave-one-match-out bench. It is a
-re-implementation of the recipe the shipped model was trained with, using the same data,
-features, LightGBM settings and seeds. Retraining with it gives a model that is not byte-identical.
-Used in the submission, that model scores public spellF1 0.653 against 0.680 (a paired
-difference within noise) with the same whole-match checks, so we kept the shipped model.
-`training/README.md` has the steps and the comparison.
+**Training code.** `solution/training/` holds the code that trained the shipped model. It
+downloads the open data, degrades it and trains the model. From the raw data it reproduces
+`solution/team_model.txt` byte for byte, so the whole chain can be rerun, from public data to the
+submitted file. `solution/training/README.md` has the steps.
 
 ## 4. Possession rules
 

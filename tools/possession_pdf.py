@@ -37,7 +37,6 @@ SOLUTIONS = (
     ("solution_pol_5e9d334", "Pol: rules (nearest player + dead ball)"),
     ("solution_adria", "Adrià: learned team model + Pol's dead ball"),
     ("solution", "SUBMITTED: Adrià's model + sharper dead ball"),
-    ("solution_retrained", "solution, team model retrained by training/"),
 )
 WINDOW_MIN = 10
 
