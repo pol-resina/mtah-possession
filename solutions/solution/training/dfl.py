@@ -1,6 +1,6 @@
 """The open DFL matches as numpy arrays, one compact file per match.
 
-    python solutions/solution_pol_loop/training/dfl.py                 # cache/dfl/raw/*.xml -> cache/dfl/npz/<match>.npz
+    python solutions/solution/training/dfl.py                 # cache/dfl/raw/*.xml -> cache/dfl/npz/<match>.npz
 
 Each match becomes (25 Hz, both halves one after the other, pitch metres with the origin in a corner
 like our own tracking):
@@ -45,7 +45,7 @@ SECTIONS = {b"firstHalf": 1, b"secondHalf": 2}
 def one(pattern, name):
     found = glob.glob(os.path.join(RAW, pattern.format(name)))
     if len(found) != 1:
-        raise FileNotFoundError("{}: run solutions/solution_pol_loop/training/download.py first".format(pattern.format(name)))
+        raise FileNotFoundError("{}: run solutions/solution/training/download.py first".format(pattern.format(name)))
     return found[0]
 
 

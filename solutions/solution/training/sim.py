@@ -4,7 +4,7 @@ The DFL tracking is clean: every player on every frame, a ball on every frame. O
 taken away here, and how much, is set from aggregate measurements of our own match's tracking (no
 labels involved); each number says where it comes from.
 
-    python solutions/solution_pol_loop/training/sim.py            # the degraded matches' statistics next to our tracking's
+    python solutions/solution/training/sim.py            # the degraded matches' statistics next to our tracking's
 """
 
 import os
@@ -14,7 +14,7 @@ from types import SimpleNamespace
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SOLUTION = os.path.dirname(HERE)                   # solutions/solution_pol_loop/
+SOLUTION = os.path.dirname(HERE)                   # solutions/solution/
 ROOT = os.path.dirname(os.path.dirname(SOLUTION))  # the repository
 for path in (SOLUTION, HERE):
     if path not in sys.path:

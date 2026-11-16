@@ -12,7 +12,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))
-SOLUTION = "solution_pol_loop"  # the submitted solution, in solutions/
+SOLUTION = "solution"  # the submitted solution, in solutions/
 sys.path.insert(0, os.path.join(ROOT, "solutions", SOLUTION))
 import tracking, deadball, possession  # noqa
 from segments import runs, label_runs  # noqa

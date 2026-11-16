@@ -1,6 +1,6 @@
 """Download the open DFL dataset the bench is built on.
 
-    python solutions/solution_pol_loop/training/download.py            # 21 files, 2.6 GB, into cache/dfl/raw/ (git-ignored)
+    python solutions/solution/training/download.py            # 21 files, 2.6 GB, into cache/dfl/raw/ (git-ignored)
 
 Bassek, M., Rein, R., Weber, H., Memmert, D. (2025). An integrated dataset of spatiotemporal and
 event data in elite soccer. Scientific Data. Figshare article 28196177, CC BY 4.0: seven matches of

@@ -1,6 +1,6 @@
 """Entry point: turns the match tracking into the submission CSV (one H / A / D / X per video frame).
 
-    python solutions/solution_pol_loop/run.py   # writes evaluation/results/solution_pol_loop.csv
+    python solutions/solution/run.py   # writes evaluation/results/solution.csv
     python evaluation/run_evaluation.py         # scores it
 
 WHAT IT IS FOR
@@ -120,7 +120,7 @@ def summary(labels, match):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--name", default="solution_pol_loop", help="file name on the board")
+    parser.add_argument("--name", default="solution", help="file name on the board")
     parser.add_argument("--out", default=RESULTS_DIR, help="where to write")
     args = parser.parse_args()
 

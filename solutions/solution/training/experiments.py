@@ -1,9 +1,9 @@
 """Experiments on the bench, each leave-one-match-out and compared match by match.
 
-    python solutions/solution_pol_loop/training/experiments.py base      # the shipped recipe
-    python solutions/solution_pol_loop/training/experiments.py dead      # a learned dead-ball step against the rule-based one
-    python solutions/solution_pol_loop/training/experiments.py touch     # the shipped features plus touch features
-    python solutions/solution_pol_loop/training/experiments.py switch    # the decoder's switch cost
+    python solutions/solution/training/experiments.py base      # the shipped recipe
+    python solutions/solution/training/experiments.py dead      # a learned dead-ball step against the rule-based one
+    python solutions/solution/training/experiments.py touch     # the shipped features plus touch features
+    python solutions/solution/training/experiments.py switch    # the decoder's switch cost
 
 Results are appended to cache/dfl/results.json so later runs can compare against earlier ones.
 """

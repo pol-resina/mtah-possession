@@ -1,6 +1,6 @@
 """The bench: train a team model on six degraded DFL matches, test the whole pipeline on the seventh.
 
-    python solutions/solution_pol_loop/training/core.py              # leave-one-match-out for the shipped recipe
+    python solutions/solution/training/core.py              # leave-one-match-out for the shipped recipe
 
 Everything here runs on other matches. Our own match and its public ground truth are never read.
 """
@@ -13,7 +13,7 @@ from types import SimpleNamespace
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SOLUTION = os.path.dirname(HERE)                   # solutions/solution_pol_loop/
+SOLUTION = os.path.dirname(HERE)                   # solutions/solution/
 ROOT = os.path.dirname(os.path.dirname(SOLUTION))  # the repository
 for path in (os.path.join(ROOT, "evaluation"), SOLUTION, HERE):
     if path not in sys.path:

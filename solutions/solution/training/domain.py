@@ -1,6 +1,6 @@
 """Does the degraded DFL data look like our tracking? A classifier is asked to tell them apart.
 
-    python solutions/solution_pol_loop/training/domain.py
+    python solutions/solution/training/domain.py
 
 Rows of our match's features (live frames by our own dead-ball step; no labels involved) against
 rows of the bench's test matches (frames in play). An AUC near 0.5 means the model cannot tell where

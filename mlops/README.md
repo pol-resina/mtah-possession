@@ -2,7 +2,7 @@
 
 Every solution lives in its own folder, `solutions/solution_<who>_<commit>/`, with a `run.py`
 that accepts `--out <dir> --name <file>` and writes the submission to `<dir>/<file>.csv`
-(see `solutions/solution_pol_loop/`). Pushed solutions are registered as versions of
+(see `solutions/solution/`). Pushed solutions are registered as versions of
 the MLflow model `possession`:
 
 - **on `main`**, every new or changed solution is registered;
@@ -60,7 +60,7 @@ mlflow ui --backend-store-uri sqlite:///.mlflow/mlflow.db       # http://127.0.0
 ```python
 import mlflow, pandas as pd
 mlflow.set_tracking_uri("sqlite:///.mlflow/mlflow.db")
-model = mlflow.pyfunc.load_model("models:/possession@best")    # or @solution_pol_loop
+model = mlflow.pyfunc.load_model("models:/possession@best")    # or @solution
 labels = model.predict(pd.DataFrame({"data_dir": ["/path/to/data"]}))
 ```
 

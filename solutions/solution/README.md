@@ -4,7 +4,7 @@ Labels every frame `H` / `A` / `D` (and `X` outside the two graded halves, as in
 tactical and broadcast cameras' tracking. No video, no Smart Tagging, no ground truth.
 
 ```bash
-python solutions/solution_pol_loop/run.py   # writes evaluation/results/solution_pol_loop.csv (~25 s)
+python solutions/solution/run.py   # writes evaluation/results/solution.csv (~25 s)
 python evaluation/run_evaluation.py         # scores it
 ```
 
@@ -169,11 +169,11 @@ this file reproduce the submitted file byte for byte, from a fresh clone:
 
 ```bash
 python -m venv .venv && . .venv/bin/activate
-pip install -r solutions/solution_pol_loop/requirements.txt
+pip install -r solutions/solution/requirements.txt
 # unpack the match data bundle into data/ (see data/README.md), or point MTAH_DATA_DIR at it
-python solutions/solution_pol_loop/run.py      # -> evaluation/results/solution_pol_loop.csv
-python evaluation/validate_submission.py evaluation/results/solution_pol_loop.csv
-sha256sum evaluation/results/solution_pol_loop.csv
+python solutions/solution/run.py      # -> evaluation/results/solution.csv
+python evaluation/validate_submission.py evaluation/results/solution.csv
+sha256sum evaluation/results/solution.csv
 # 54aa51b1861922d2139e977b4ddf347c798f41900060722c3c09136a11d5da9d
 ```
 
