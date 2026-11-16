@@ -8,7 +8,7 @@ engineers. You are given one complete LaLiga match — two camera feeds, automat
 player and the ball, automatic tactical tagging, and the camera-to-pitch geometry — and one
 question to answer with it.
 
-> **Our submission:** [`solutions/solution/`](solutions/solution/README.md).
+> **Our submission:** [`solution/`](solution/README.md).
 > How it works and how to reproduce the submitted file byte for byte are in its README.
 
 ---

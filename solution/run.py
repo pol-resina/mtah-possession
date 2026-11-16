@@ -1,6 +1,6 @@
 """Entry point: turns the match tracking into the submission CSV (one H / A / D / X per video frame).
 
-    python solutions/solution/run.py   # writes evaluation/results/solution.csv
+    python solution/run.py   # writes evaluation/results/solution.csv
     python evaluation/run_evaluation.py         # scores it
 
 WHAT IT IS FOR
@@ -27,7 +27,7 @@ from types import SimpleNamespace
 import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(os.path.dirname(HERE))  # solutions/<this folder>/ -> repository
+ROOT = os.path.dirname(HERE)  # solution/ -> repository
 sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "starter"))

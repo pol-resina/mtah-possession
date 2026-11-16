@@ -1,11 +1,11 @@
-"""Register the solutions in solutions/ as versions of the MLflow model `possession`.
+"""Register solution/ (and any solutions/<name>/) as versions of the MLflow model `possession`.
 
     python mlops/register.py --commit <sha> [--branch main] [--message "<commit message>"]
                              [--baseline-commit <sha> --baseline-tree <dir>] [--store <dir>]
 
 .githooks/pre-push calls this for every branch pushed, from a clean export of the pushed commit.
-Each folder solutions/<name>/ with a run.py is one solution. run.py must accept --out <dir> and
---name <file> and write the submission to <dir>/<file>.csv. A solution is identified by a hash of
+solution/, and each solutions/<name>/, with a run.py is one solution. run.py must accept
+--out <dir> and --name <file> and write the submission to <dir>/<file>.csv. A solution is identified by a hash of
 its files, so one that is already registered is skipped:
 
   main      every new or changed solution is registered
@@ -58,7 +58,7 @@ METRICS = ("public_spell_f1", "public_macro_f1")
 PUBLIC_GT = os.path.join(ROOT, "evaluation", "gt", "BAR-ATH_possession_gt_public.csv")
 MODEL_DESCRIPTION = (
     "Ball possession for every video frame of the match: H (home), A (away) or D (dead ball). "
-    "Each version is one solution from solutions/ at one commit (tags `solution`, `git_commit`); "
+    "Each version is one solution (solution/ or solutions/<name>/) at one commit (tags `solution`, `git_commit`); "
     "its method is in that solution's README.md. @<solution> is a solution's newest version, "
     "@best the best version registered. Versions from branches other than main were registered "
     "because they beat main's best solution on the public window when pushed.")
@@ -69,12 +69,21 @@ SKIP = shutil.ignore_patterns("__pycache__", "*.pyc")
 
 
 def solutions(root):
-    """{name: folder} of every solution under root/solutions/."""
+    """{name: folder} of every solution: root/solution/ (named "solution") and root/solutions/*/."""
+    found = {}
+    if os.path.isfile(os.path.join(root, "solution", "run.py")):
+        found["solution"] = os.path.join(root, "solution")
     base = os.path.join(root, "solutions")
-    if not os.path.isdir(base):
-        return {}
-    return {name: os.path.join(base, name) for name in sorted(os.listdir(base))
-            if os.path.isfile(os.path.join(base, name, "run.py"))}
+    if os.path.isdir(base):
+        found.update({name: os.path.join(base, name) for name in sorted(os.listdir(base))
+                      if os.path.isfile(os.path.join(base, name, "run.py"))})
+    return found
+
+
+def layout_path(folder, name):
+    """Where a solution sits in the repository: solutions/<name>/ or solution/."""
+    parent = os.path.basename(os.path.dirname(os.path.abspath(folder)))
+    return os.path.join("solutions", name) if parent == "solutions" else "solution"
 
 
 def folder_hash(folder):
@@ -167,7 +176,7 @@ def score_line(name, scores, main_name=None, main_scores=None):
 
 def stage_code(folder, name, out):
     """A folder laid out like the repository, holding only what the solution's run.py needs."""
-    shutil.copytree(folder, os.path.join(out, "solutions", name), ignore=SKIP)
+    shutil.copytree(folder, os.path.join(out, layout_path(folder, name)), ignore=SKIP)
     shutil.copytree(os.path.join(ROOT, "starter"), os.path.join(out, "starter"), ignore=SKIP)
     shutil.copy(os.path.join(ROOT, "games.py"), out)
     return out
@@ -205,7 +214,8 @@ def register(exp_id, name, folder, digest, args, main_name, main_scores):
                 info = mlflow.pyfunc.log_model(
                     name="model", python_model=os.path.join(HERE, "model.py"),
                     artifacts={"code": stage_code(folder, name, os.path.join(tmp, "code"))},
-                    model_config={"solution": name}, signature=SIGNATURE,
+                    model_config={"solution": name, "path": layout_path(folder, name)},
+                    signature=SIGNATURE,
                     registered_model_name=MODEL_NAME,
                     pip_requirements=["numpy=={}".format(np.__version__),
                                       "pandas=={}".format(pd.__version__)])

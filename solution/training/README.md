@@ -17,13 +17,13 @@ repository.
 
 ## Steps
 
-From the repository root, after `pip install -r solutions/solution/requirements.txt`:
+From the repository root, after `pip install -r solution/requirements.txt`:
 
 ```bash
-python solutions/solution/training/download.py          # -> cache/dfl/raw/  (2.6 GB)
-python solutions/solution/training/dfl.py               # -> cache/dfl/npz/  (one file per match)
-python solutions/solution/training/export.py            # -> cache/dfl/export/team_model.txt
-python solutions/solution/training/experiments.py base  # leave-one-match-out bench
+python solution/training/download.py          # -> cache/dfl/raw/  (2.6 GB)
+python solution/training/dfl.py               # -> cache/dfl/npz/  (one file per match)
+python solution/training/export.py            # -> cache/dfl/export/team_model.txt
+python solution/training/experiments.py base  # leave-one-match-out bench
 ```
 
 `export.py` takes about 10 minutes on 16 threads, and the bench about 15. Neither overwrites the

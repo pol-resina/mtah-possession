@@ -1,6 +1,6 @@
 """Train the team model on all seven bench matches.
 
-    python solutions/solution/training/export.py [--out DIR] [--kind base|touch] [--dead]
+    python solution/training/export.py [--out DIR] [--kind base|touch] [--dead]
 
 Writes team_model.txt and team_model_features.txt (and, with --dead, dead_model.txt) into DIR,
 cache/dfl/export/ by default. It never overwrites the solution's own model: copy the files next to

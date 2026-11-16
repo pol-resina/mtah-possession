@@ -1,6 +1,6 @@
 """Download the open DFL dataset the bench is built on.
 
-    python solutions/solution/training/download.py            # 21 files, 2.6 GB, into cache/dfl/raw/ (git-ignored)
+    python solution/training/download.py            # 21 files, 2.6 GB, into cache/dfl/raw/ (git-ignored)
 
 Bassek, M., Rein, R., Weber, H., Memmert, D. (2025). An integrated dataset of spatiotemporal and
 event data in elite soccer. Scientific Data. Figshare article 28196177, CC BY 4.0: seven matches of
@@ -14,7 +14,7 @@ import shutil
 import sys
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 RAW = os.path.join(ROOT, "cache", "dfl", "raw")
 ARTICLE = "https://api.figshare.com/v2/articles/28196177"
 AGENT = {"User-Agent": "dfl-open-data-downloader"}

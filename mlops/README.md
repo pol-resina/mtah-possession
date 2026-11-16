@@ -1,9 +1,8 @@
 # Model registry (MLflow)
 
-Every solution lives in its own folder, `solutions/solution_<who>_<commit>/`, with a `run.py`
-that accepts `--out <dir> --name <file>` and writes the submission to `<dir>/<file>.csv`
-(see `solutions/solution/`). Pushed solutions are registered as versions of
-the MLflow model `possession`:
+The solution lives in `solution/` (experimental variants may sit in `solutions/<name>/`), with a
+`run.py` that accepts `--out <dir> --name <file>` and writes the submission to `<dir>/<file>.csv`.
+Pushed solutions are registered as versions of the MLflow model `possession`:
 
 - **on `main`**, every new or changed solution is registered;
 - **on any other branch**, a solution that differs from main's copy is registered only if it beats
