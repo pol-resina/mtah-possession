@@ -4,7 +4,7 @@
 
 **Code:** https://github.com/pol-resina/mtah-possession (`solution/`) ·
 **Submitted file:** `La MasIA.csv`, sha256
-`54aa51b1861922d2139e977b4ddf347c798f41900060722c3c09136a11d5da9d`
+`ca37ea8b12a67b7c24e1a05713aab17a6a5fbee82a473ba0b2b8ef73c897575e`
 
 ## 1. Approach
 
@@ -15,9 +15,11 @@ and we answer them separately:
 1. **Is the ball alive?** A rule-based dead-ball detector (`deadball.py`) built from the Laws of the
    Game and the physics of a stoppage: players slow down, the ball goes untracked or crosses a
    line, and play restarts with a kick from a legal spot.
-2. **Who has it, while it is alive?** A LightGBM model (`team_model.txt`, 400 trees, 530 features)
-   gives P(home has the ball) at 5 Hz. A Viterbi decoder then turns those probabilities into
-   possessions, charging 1.0 nat for each change of team. Each live stretch between two stoppages
+2. **Who has it, while it is alive?** Two models give P(home has the ball) at 5 Hz from the same
+   530 features: a LightGBM model (`team_model.txt`, 400 trees) and a temporal convolutional
+   network (`tcn.py`, `team_tcn.npz`) that reads about 12 s either side of each row. Their
+   probabilities are averaged in log-odds. A Viterbi decoder then turns them into possessions,
+   charging 2.0 nats for each change of team. Each live stretch between two stoppages
    is decoded on its own, so possession can change freely across a stoppage.
 
 **Why this design.** The ball is untracked on 41% of the graded frames, so a nearest-player rule
@@ -42,7 +44,15 @@ the spellF1 bootstrap band of our own file there runs from 0.48 to 0.84. We chos
 |---|---|---|
 | organisers' best baseline (`baseline_smooth125`) | 0.424 | 0.581 |
 | our rules-only predecessor (earlier version, commit `5e9d334`) | 0.581 | 0.926 |
-| **submitted (`solution`)** | **0.680** (band 0.48–0.84) | **0.946** |
+| trees only (`main` branch) | 0.680 (band 0.48–0.84) | 0.946 |
+| **submitted: trees + network** | **0.655** (band 0.48–0.81) | **0.955** |
+
+On the external bench (team step only, the true dead ball, each of the 7 matches held out in
+turn), the trees alone score spellF1 0.586 and the trees averaged with the network 0.634, better
+on all 7 matches; the decoder's switch cost (2.0) was chosen on the other six matches each time and
+came out the same in every fold. The public difference between the two (−0.025, paired 5–95 %:
+−0.074 to +0.040) is noise; on the public window the new team step picks the wrong team on 3.6 %
+of live frames instead of 5.0 % and finds 16 of the 17 possessions instead of 13.
 
 ## 2. Assets: used and dropped
 
@@ -101,6 +111,12 @@ held-out fold. The shipped model is trained on all 7 matches.
 downloads the open data, degrades it and trains the model. From the raw data it reproduces
 `solution/team_model.txt` byte for byte, so the whole chain can be rerun, from public data to the
 submitted file. `solution/training/README.md` has the steps.
+
+The network (`solution/team_tcn.npz`) is trained by `solution/training/network/` on the same seven
+degraded DFL matches and the same features: a 1x1 convolution to 64 channels, five residual blocks
+of dilated convolutions (dilations 1-16, about 12 s either side at 5 Hz), binary cross-entropy on
+the frames where the ball is alive, 2,000 steps of AdamW (PyTorch, CPU, fixed seeds). The
+solution applies it with NumPy alone.
 
 ## 4. Possession rules
 
@@ -164,7 +180,7 @@ python -m venv .venv && . .venv/bin/activate
 pip install -r solution/requirements.txt   # numpy 2.5.4, pandas 3.1.0, scipy 1.18.1, lightgbm 4.6.0
 python solution/run.py --name "La MasIA"   # -> evaluation/results/La MasIA.csv, ~25 s
 python evaluation/validate_submission.py "evaluation/results/La MasIA.csv"
-sha256sum "evaluation/results/La MasIA.csv"   # 54aa51b1861922d2139e977b4ddf347c798f41900060722c3c09136a11d5da9d
+sha256sum "evaluation/results/La MasIA.csv"   # ca37ea8b12a67b7c24e1a05713aab17a6a5fbee82a473ba0b2b8ef73c897575e
 ```
 
 The pipeline is deterministic. We checked this with a fresh clone in a new environment, which

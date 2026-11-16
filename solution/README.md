@@ -35,9 +35,11 @@ python evaluation/run_evaluation.py         # scores it
    to the nearest frames. The ball is untracked on about 41 % of the graded frames, so the model
    also reads the players' shape and movement (team centroids, spreads, speeds, forward velocity,
    nearest player per team, over windows of 0.4-10 s) and still says something with the ball
-   unseen.
+   unseen. A temporal convolutional network (`tcn.py`, weights in `team_tcn.npz`) reads the same
+   530 features over about 12 s either side of each row, and the two probabilities are averaged
+   in log-odds. The network runs in NumPy (float64), so the result does not depend on PyTorch.
 4. **Smooth the team labels** (`segments.py`). Each live stretch is labelled home or away on its
-   own by a minimum-cost labelling (Viterbi decoding) in which every change of team costs 1.0 nat
+   own by a minimum-cost labelling (Viterbi decoding) in which every change of team costs 2.0 nats
    (the unit of information for the natural logarithm; a probability `p` costs `-log p`). This
    stops the label flickering on noisy frames, and because each live stretch is decoded
    separately, possession can change freely across a stoppage.
@@ -143,6 +145,14 @@ feature means the same in both halves, and goalkeeper tracks get the team defend
 
 ## The team model
 
+**Trees + network (this branch).** On the DFL bench, team step only (the true dead ball), each
+match held out in turn: the trees alone 0.586 spellF1, the network alone 0.608 (better on 6 of 7),
+their log-odds average 0.634 with the switch cost chosen on the other six matches every time
+(2.0 in every fold): +0.048, better on 7 of 7. On the match, the dead ball is unchanged; the
+team differs on 4.4 % of live frames and the possessions go from 271 to 297. The public window
+moves from 0.680 to 0.655 spellF1 (paired 5-95 %: -0.074 to +0.040, i.e. noise) and from 0.946 to
+0.955 macroF1. `training/network/README.md` has the training and the bench.
+
 The public 5 minutes hold only 17 possessions, too few to rank anything, so the team model was
 judged on an external bench instead: 7 matches of the Deutsche Fußball Liga (DFL) Bundesliga
 (Sportec open data, Bassek et al. 2025, CC BY 4.0) with real ball-status and possession labels,
@@ -182,7 +192,7 @@ pip install -r solution/requirements.txt
 python solution/run.py      # -> evaluation/results/solution.csv
 python evaluation/validate_submission.py evaluation/results/solution.csv
 sha256sum evaluation/results/solution.csv
-# 54aa51b1861922d2139e977b4ddf347c798f41900060722c3c09136a11d5da9d
+# ca37ea8b12a67b7c24e1a05713aab17a6a5fbee82a473ba0b2b8ef73c897575e
 ```
 
 `run.py --name <team_name>` writes the same labels as `evaluation/results/<team_name>.csv`.

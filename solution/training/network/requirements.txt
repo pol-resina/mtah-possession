@@ -1,0 +1,2 @@
+# Only for training the network (solution/training/network/); running the solution does not need it.
+torch==2.15.0

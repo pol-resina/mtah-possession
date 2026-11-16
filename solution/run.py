@@ -38,12 +38,13 @@ import games                                         # noqa: E402
 import broadcast                                     # noqa: E402
 import deadball                                      # noqa: E402
 import features as FT                                # noqa: E402
+import tcn                                           # noqa: E402
 import tracking                                      # noqa: E402
 from segments import label_runs, runs, two_state     # noqa: E402
 
 # Params
 TEAM_MODEL = os.path.join(HERE, "team_model.txt")  # LightGBM, P(home | ball alive), 5 Hz rows
-SWITCH_COST = 1.0       # to stop label flickering in noisy frames
+SWITCH_COST = 2.0       # nats per change of team; chosen on the DFL bench (nested, the same in every fold)
 ROW_FRAMES = 5          # 25 fps frames, 5 samples per row (5Hz): a frame carries 1/5 of a row's evidence
 RESULTS_DIR = os.path.join(ROOT, "evaluation", "results")
 # mark first/second halves explicitly; frames before the first, between the two and after the second are labelled "X"
@@ -68,14 +69,18 @@ def as_obs(match):
 
 
 def team_probability(match):
-    """P(home | ball alive) on every frame (5 Hz model, nearest row)."""
+    """P(home | ball alive) on every frame: the trees and the temporal network, averaged in
+    log-odds at the 5 Hz rows, then spread to the nearest frames."""
     import lightgbm as lgb
     obs = as_obs(match)
-    _, X = FT.frame_features(obs)
+    names, X = FT.frame_features(obs)
     rows = FT.sample_rows(obs)
     with open(TEAM_MODEL) as f:  # text mode: a Windows checkout's CRLF would break LightGBM's parser
         booster = lgb.Booster(model_str=f.read())
-    p = booster.predict(X[rows])
+    p_trees = np.clip(booster.predict(X[rows]), 1e-6, 1 - 1e-6)
+    p_net = np.clip(tcn.probability(X[rows], rows, match.halves, names), 1e-6, 1 - 1e-6)
+    logit = lambda q: np.log(q / (1 - q))
+    p = 1.0 / (1.0 + np.exp(-(logit(p_trees) + logit(p_net)) / 2))
     return FT.expand(p, rows, match.n, match.halves)
 
 
