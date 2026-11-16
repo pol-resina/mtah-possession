@@ -159,6 +159,19 @@ control" is not how it was annotated). On the external bench: using the restart 
 opening state (+0.000), and adding SkillCorner A-League matches to the team model's training data
 (-0.010 `spellF1`, better on 1 of 7 matches).
 
-## Requirements
+## Reproduction
 
-`lightgbm` (tested 4.6.0) and `scipy` (1.14.1), on top of `requirements.txt`.
+Python 3.14 (tested 3.14.4 on Linux x86-64). The pinned versions in `requirements.txt` next to
+this file reproduce the submitted file byte for byte, from a fresh clone:
+
+```bash
+python -m venv .venv && . .venv/bin/activate
+pip install -r solutions/solution_pol_loop/requirements.txt
+# unpack the match data bundle into data/ (see data/README.md), or point MTAH_DATA_DIR at it
+python solutions/solution_pol_loop/run.py      # -> evaluation/results/solution_pol_loop.csv
+python evaluation/validate_submission.py evaluation/results/solution_pol_loop.csv
+sha256sum evaluation/results/solution_pol_loop.csv
+# 54aa51b1861922d2139e977b4ddf347c798f41900060722c3c09136a11d5da9d
+```
+
+`run.py --name <team_name>` writes the same labels as `evaluation/results/<team_name>.csv`.

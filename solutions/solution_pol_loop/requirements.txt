@@ -1,0 +1,5 @@
+# The versions that reproduce the submitted file byte for byte (Python 3.14.4, Linux x86-64).
+numpy==2.5.4
+pandas==3.1.0
+scipy==1.18.1
+lightgbm==4.6.0
