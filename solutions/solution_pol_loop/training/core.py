@@ -31,7 +31,7 @@ TRAIN_SEEDS = (100, 101)   # two degraded copies of every training match...
 TEST_SEED = 0              # ...and another one of the test match
 SWITCH_COST = 1.0          # nats per change of team, as in the solution
 ROW_FRAMES = 5
-# The settings stored in solution_adria/team_model.txt
+# The settings stored in the shipped model, ../team_model.txt
 PARAMS = dict(objective="binary", learning_rate=0.05, num_leaves=63, min_data_in_leaf=200,
               bagging_fraction=0.8, bagging_freq=1, feature_fraction=0.5, lambda_l2=1.0, seed=0,
               deterministic=True, force_row_wise=True, verbosity=-1, num_threads=16)
