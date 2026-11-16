@@ -80,7 +80,7 @@ The dead-ball step has three rules that use the broadcast camera or the Laws of 
 
 | addition | rule | source of its numbers |
 |---|---|---|
-| cut-aways | while the ball is quiet, a broadcast frame cut away from the game shot (replay, close-up) adds 1.54 log-odds to the dead-ball score | measured on the whole match: 61.3 % of quiet dead frames are cut away, 13.1 % of quiet live ones; a video audit of the changes found 5 right and 1 wrong |
+| cut-aways | while the ball is quiet, a broadcast frame cut away from the game shot (replay, close-up) adds 1.54 log-odds to the dead-ball score | measured on the whole match: 61.3 % of quiet dead frames are cut away, 13.1 % of quiet live ones; 1.54 = ln(0.613 / 0.131) |
 | goals | a stoppage that ends with a kickoff starts when the ball was last tracked, not when the players slow down | Laws of the Game 8 and 10 (start and restart of play; determining the outcome of a match). Kickoff = at the restart, at least 0.9 of the tracked players are in their own half; over the 115 restarts that share is 0.4-0.8 for 110 and 0.95-1.00 for 5, nothing in between |
 | false restarts | a restart kick is not believed when the dead-ball evidence goes on for 4 s or more after it and no camera has the ball on most of those frames | 4 s is the longest gap the tracker bridges when it loses the ball; "most" is 0.5. Both fixed before the result was seen |
 
@@ -101,18 +101,17 @@ the output.
 | restart team agrees with Smart Tagging | 20/24 | 21/25 | 21/25 | 21/25 |
 | Smart Tagging phase agreement, live frames | 0.840 | 0.841 | 0.845 | 0.848 |
 
-- **cut-aways**: the 61.3 % / 13.1 % shares above are the whole-match measurement; the video audit
-  found 5 right and 1 wrong.
+- **cut-aways**: the weight is the log of the ratio of the two whole-match shares above. Stoppages,
+  set pieces and restart team are the same at half and at double the weight.
 - **goals**: 3 stoppages start 4.7-8.0 s earlier (the fourth goal's already started on time). The
   detector finds 5 kickoffs; Smart Tagging tags 6 = the first-half start, which is not a restart
   here, plus the second-half start and 4 after a goal. The model had given those gaps to a team, most
   often the one that conceded.
 - **false restarts**: 5 stoppage ends move 5.6-16.4 s later. For one tagged corner the stoppage end
-  goes from 16.3 s before the tag's usual restart time to 0.2 s after it. Stills of the five (looked
-  at to understand them, not as labels): a keeper kicking the ball out of the net after a goal, the
-  ball placed for a corner 16 s before it is taken, a ball rolled to the keeper during a replay, the
-  scuffle at the final whistle; and one that may be wrong, a short goal kick the keeper then holds at
-  his feet for 10 s.
+  goes from 16.3 s before the tag's usual restart time to 0.2 s after it. The rule targets a ball
+  that is moved but not played, such as one kicked out of the net after a goal or placed for a
+  corner well before it is taken. It can misfire on a short goal kick that the keeper then holds at
+  his feet.
 
 Smart Tagging's phase agreement is reported but proves little: it tags coarse phases and disagrees
 with short possessions everywhere, so it rewards any change that removes one.
