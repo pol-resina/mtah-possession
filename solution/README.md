@@ -1,5 +1,15 @@
 # Ball possession from tracking: a learned team model and a camera-aware dead ball
 
+**Team La MasIA:** Adrià Capdevila, Jordi Rogerson, Martina Massana, Adrián Quirante, Pol Resina.
+
+| where | what |
+|---|---|
+| `solution/` | the pipeline that writes the submission (`run.py`), and the team model it uses (`team_model.txt`) |
+| `solution/training/` | the code that trained `team_model.txt` from open data on other games, reproducing it byte for byte |
+| `submission/` | what we submitted: `La MasIA.csv` (the possession file) and `La MasIA.md` (the technical document) |
+
+Everything else in the repository is the organisers' challenge kit, unchanged.
+
 Labels every frame `H` / `A` / `D` (and `X` outside the two graded halves, as in the task) from the
 tactical and broadcast cameras' tracking. No video, no Smart Tagging, no ground truth.
 

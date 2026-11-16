@@ -62,6 +62,3 @@ __pycache__/
 venv/
 env/
 .DS_Store
-
-# local MLflow store of the former pre-push registry (removed)
-.mlflow/
