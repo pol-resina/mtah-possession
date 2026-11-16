@@ -63,5 +63,5 @@ venv/
 env/
 .DS_Store
 
-# MLflow store of the pre-push registry (mlops/README.md)
+# local MLflow store of the former pre-push registry (removed)
 .mlflow/
